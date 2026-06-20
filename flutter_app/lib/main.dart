@@ -113,7 +113,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _applyVoiceForLanguage(String language) async {
-    final targetLocale = _ttsLocaleFor(language);
+    final targetLocales = _ttsLocalesFor(language);
+    final targetLocale = targetLocales.first;
     final targetLangCode = _languageCodeOf(targetLocale);
 
     // Re-check available voices every time: some platforms finish loading
@@ -125,11 +126,12 @@ class _HomePageState extends State<HomePage> {
 
     final localeMatches = _availableVoices.where((voice) {
       final voiceLocale = _voiceLocaleOf(voice).toLowerCase();
-      return voiceLocale == targetLocale.toLowerCase() ||
+      // match any of the candidate locales or the base language code
+      return targetLocales.map((e) => e.toLowerCase()).contains(voiceLocale) ||
           _languageCodeOf(voiceLocale) == targetLangCode;
     }).toList();
 
-    await _tts.setLanguage(targetLocale);
+    await _trySetLanguage(targetLocales);
 
     if (localeMatches.isNotEmpty) {
       // A genuine voice exists for this language: pick the smoothest
@@ -385,19 +387,36 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  String _ttsLocaleFor(String language) {
-    const locales = {
-      'English': 'en-US',
-      'Hindi': 'hi-IN',
-      'Bengali': 'bn-IN',
-      'Tamil': 'ta-IN',
-      'Telugu': 'te-IN',
-      'Marathi': 'mr-IN',
-      'Gujarati': 'gu-IN',
-      'Kannada': 'kn-IN',
-      'Malayalam': 'ml-IN',
+  // Returns an ordered list of locale candidates (best -> fallback).
+  List<String> _ttsLocalesFor(String language) {
+    const localeMap = {
+      'English': ['en-US', 'en-GB', 'en'],
+      'Hindi': ['hi-IN', 'hi'],
+      'Bengali': ['bn-IN', 'bn-BD', 'bn'],
+      'Tamil': ['ta-IN', 'ta-LK', 'ta'],
+      'Telugu': ['te-IN', 'te'],
+      'Marathi': ['mr-IN', 'mr'],
+      'Gujarati': ['gu-IN', 'gu'],
+      'Kannada': ['kn-IN', 'kn'],
+      'Malayalam': ['ml-IN', 'ml'],
     };
-    return locales[language] ?? 'en-US';
+    return List<String>.from(localeMap[language] ?? ['en-US']);
+  }
+
+  // Try setting the TTS language from a list of candidates until one succeeds.
+  Future<void> _trySetLanguage(List<String> locales) async {
+    for (final locale in locales) {
+      try {
+        await _tts.setLanguage(locale);
+        return;
+      } catch (_) {
+        // try next
+      }
+    }
+    // fallback
+    try {
+      await _tts.setLanguage('en-US');
+    } catch (_) {}
   }
 
   void _showFilePicker() {
@@ -893,7 +912,7 @@ class _HomePageState extends State<HomePage> {
                       maxHeight: MediaQuery.of(context).size.height * 0.55,
                     ),
                     child: Builder(builder: (context) {
-                      final targetLangCode = _languageCodeOf(_ttsLocaleFor(_selectedLanguage));
+                      final targetLangCode = _languageCodeOf(_ttsLocalesFor(_selectedLanguage).first);
                       final sortedVoices = [..._availableVoices]..sort((a, b) {
                         final aMatches = _languageCodeOf(_voiceLocaleOf(a)) == targetLangCode;
                         final bMatches = _languageCodeOf(_voiceLocaleOf(b)) == targetLangCode;
@@ -924,7 +943,7 @@ class _HomePageState extends State<HomePage> {
                               setState(() {
                                 _selectedVoiceName = voiceName;
                               });
-                              await _tts.setLanguage(_ttsLocaleFor(_selectedLanguage));
+                              await _trySetLanguage(_ttsLocalesFor(_selectedLanguage));
                               await _setTtsVoice(voice);
                               _voiceExplicitlyPinned = true;
                             },
