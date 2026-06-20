@@ -6,9 +6,11 @@ Uses local fallback agents for report parsing and processing.
 from starlette.applications import Starlette
 from starlette.background import BackgroundTask
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.requests import Request
 from starlette.routing import Route
+from gtts import gTTS
+import io
 import shutil
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -452,6 +454,55 @@ async def retranslate_report(request: Request):
         return JSONResponse({"detail": str(e)}, status_code=500)
 
 
+# ============== TTS Endpoint ==============
+async def synthesize_speech(request: Request):
+    """Generate speech audio from text using gTTS (supports Indian languages)."""
+    try:
+        body = await request.json()
+        text = body.get("text", "").strip()
+        language = body.get("language", "hi").lower()
+        
+        if not text:
+            return JSONResponse({"detail": "Missing or empty text"}, status_code=400)
+        
+        # Map language names to gTTS language codes
+        lang_map = {
+            "english": "en", "en": "en",
+            "hindi": "hi", "hi": "hi",
+            "bengali": "bn", "bn": "bn",
+            "tamil": "ta", "ta": "ta",
+            "telugu": "te", "te": "te",
+            "marathi": "mr", "mr": "mr",
+            "gujarati": "gu", "gu": "gu",
+            "kannada": "kn", "kn": "kn",
+            "malayalam": "ml", "ml": "ml",
+            "punjabi": "pa", "pa": "pa",
+            "odia": "or", "or": "or",
+            "assamese": "as", "as": "as",
+            "urdu": "ur", "ur": "ur",
+        }
+        
+        # Resolve language code
+        lang_code = lang_map.get(language, "hi")
+        
+        # Generate speech
+        tts = gTTS(text=text, lang=lang_code, slow=False)
+        
+        # Save to in-memory bytes
+        audio_bytes = io.BytesIO()
+        tts.write_to_fp(audio_bytes)
+        audio_bytes.seek(0)
+        
+        # Return as streaming response
+        return StreamingResponse(
+            iter([audio_bytes.getvalue()]),
+            media_type="audio/mpeg",
+            headers={"Content-Disposition": "inline; filename=speech.mp3"}
+        )
+    except Exception as e:
+        return JSONResponse({"detail": f"TTS error: {str(e)}"}, status_code=500)
+
+
 app = Starlette(debug=True, routes=[
     Route("/", lambda request: JSONResponse({
         "message": "Medical CDSS API - Clinical Decision Support System",
@@ -488,6 +539,7 @@ app = Starlette(debug=True, routes=[
     Route("/patient/{patient_id}/history", get_patient_history),
     Route("/patient/{patient_id}/temporal", get_temporal_analysis),
     Route("/text/", process_text_report, methods=["POST"]),
+    Route("/synthesize", synthesize_speech, methods=["POST"]),
 ])
 
 import os as _os

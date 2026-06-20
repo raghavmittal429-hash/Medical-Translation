@@ -376,14 +376,58 @@ class _HomePageState extends State<HomePage> {
     await _tts.stop();
     await _applyVoiceForLanguage(_selectedLanguage);
     try {
-      // awaitSpeakCompletion is on, so this normally resolves when the
-      // browser/OS fires its "speech finished" event. As a safety net in
-      // case some platform/voice combination never fires that event, cap
-      // the wait so a single bad voice can't make every future tap of the
-      // speaker icon look like nothing is happening.
+      // Try device TTS first
       await _tts.speak(text).timeout(const Duration(seconds: 90));
-    } on TimeoutException {
-      await _tts.stop();
+    } catch (e) {
+      // Device TTS failed; fall back to backend TTS if available
+      if (_selectedLanguage != 'English') {
+        try {
+          await _speakViaBackend(text, _selectedLanguage);
+        } catch (_) {
+          // Silently fail if backend TTS also fails
+        }
+      }
+    }
+  }
+
+  // Fall back to backend TTS endpoint for languages without device voices
+  Future<void> _speakViaBackend(String text, String language) async {
+    try {
+      // Map language name to language code
+      final langCodes = {
+        'English': 'en',
+        'Hindi': 'hi',
+        'Bengali': 'bn',
+        'Tamil': 'ta',
+        'Telugu': 'te',
+        'Marathi': 'mr',
+        'Gujarati': 'gu',
+        'Kannada': 'kn',
+        'Malayalam': 'ml',
+      };
+      
+      final langCode = langCodes[language] ?? 'hi';
+      final ttsUrl = _buildApiUrl('/synthesize');
+      
+      final response = await http.post(
+        ttsUrl,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'text': text, 'language': langCode}),
+      ).timeout(const Duration(seconds: 30));
+      
+      if (response.statusCode == 200) {
+        // Play audio using HTML audio element
+        final base64Audio = base64Encode(response.bodyBytes);
+        final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
+        
+        // Use JavaScript to play audio
+        html.AudioElement audio = html.AudioElement(audioUrl);
+        await audio.play().catchError((_) {
+          // Ignore play errors
+        });
+      }
+    } catch (_) {
+      // Silently fail
     }
   }
 
