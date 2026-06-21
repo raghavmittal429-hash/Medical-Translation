@@ -2,13 +2,18 @@
 set -e
 
 echo "=== Installing Flutter ==="
-git clone https://github.com/flutter/flutter.git --depth 1 -b stable /opt/flutter
-export PATH="$PATH:/opt/flutter/bin"
+FLUTTER_DIR="$HOME/flutter"
+if [ ! -x "$FLUTTER_DIR/bin/flutter" ]; then
+  rm -rf "$FLUTTER_DIR"
+  git clone https://github.com/flutter/flutter.git --depth 1 -b stable "$FLUTTER_DIR"
+fi
+export PATH="$FLUTTER_DIR/bin:$PATH"
 
 flutter --version
 
 echo "=== Enabling Web Support ==="
 flutter config --enable-web
+flutter precache --web
 
 echo "=== Installing Dependencies ==="
 cd flutter_app
