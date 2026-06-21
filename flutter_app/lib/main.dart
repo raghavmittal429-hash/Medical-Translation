@@ -267,7 +267,7 @@ class _HomePageState extends State<HomePage> {
   // Falls back to localhost for local development
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://medical-translation-3.onrender.com',
+    defaultValue: 'https://medical-translation-5.onrender.com',
   );
 
   Uri _buildApiUrl(String path) {
