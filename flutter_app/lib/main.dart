@@ -112,6 +112,28 @@ class _HomePageState extends State<HomePage> {
     return parts.isNotEmpty ? parts.first.toLowerCase() : locale.toLowerCase();
   }
 
+  String _languageCodeFor(String language) {
+    for (final entry in _languages) {
+      if (entry['name'] == language) {
+        return entry['code'] ?? _languageCodeOf(_ttsLocalesFor(language).first);
+      }
+    }
+    return _languageCodeOf(_ttsLocalesFor(language).first);
+  }
+
+  bool _hasMatchingDeviceVoice(String language) {
+    if (_availableVoices.isEmpty) return false;
+
+    final targetLocales = _ttsLocalesFor(language);
+    final targetLangCode = _languageCodeOf(targetLocales.first);
+
+    return _availableVoices.any((voice) {
+      final voiceLocale = _voiceLocaleOf(voice).toLowerCase();
+      return targetLocales.map((e) => e.toLowerCase()).contains(voiceLocale) ||
+          _languageCodeOf(voiceLocale) == targetLangCode;
+    });
+  }
+
   Future<void> _applyVoiceForLanguage(String language) async {
     final targetLocales = _ttsLocalesFor(language);
     final targetLocale = targetLocales.first;
@@ -375,6 +397,16 @@ class _HomePageState extends State<HomePage> {
 
     await _tts.stop();
     await _applyVoiceForLanguage(_selectedLanguage);
+
+    if (_selectedLanguage != 'English' && !_hasMatchingDeviceVoice(_selectedLanguage)) {
+      try {
+        await _speakViaBackend(text, _selectedLanguage);
+        return;
+      } catch (_) {
+        // If backend TTS is unavailable, still give device TTS one chance.
+      }
+    }
+
     try {
       // Try device TTS first
       await _tts.speak(text).timeout(const Duration(seconds: 90));
@@ -393,20 +425,7 @@ class _HomePageState extends State<HomePage> {
   // Fall back to backend TTS endpoint for languages without device voices
   Future<void> _speakViaBackend(String text, String language) async {
     try {
-      // Map language name to language code
-      final langCodes = {
-        'English': 'en',
-        'Hindi': 'hi',
-        'Bengali': 'bn',
-        'Tamil': 'ta',
-        'Telugu': 'te',
-        'Marathi': 'mr',
-        'Gujarati': 'gu',
-        'Kannada': 'kn',
-        'Malayalam': 'ml',
-      };
-      
-      final langCode = langCodes[language] ?? 'hi';
+      final langCode = _languageCodeFor(language);
       final ttsUrl = _buildApiUrl('/synthesize');
       
       final response = await http.post(
@@ -425,9 +444,11 @@ class _HomePageState extends State<HomePage> {
         await audio.play().catchError((_) {
           // Ignore play errors
         });
+      } else {
+        throw Exception('Backend TTS failed with status ${response.statusCode}');
       }
     } catch (_) {
-      // Silently fail
+      rethrow;
     }
   }
 
