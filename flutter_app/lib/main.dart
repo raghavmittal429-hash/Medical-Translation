@@ -394,12 +394,15 @@ class _HomePageState extends State<HomePage> {
 
   // Report text often carries markdown-style formatting (headings, bold
   // markers, horizontal-rule separators like "======" or "------") that
-  // reads fine visually but gets read aloud literally by speech engines
-  // -- e.g. "======" comes out as "equal equal equal...". This strips
-  // that kind of decoration before any text reaches a TTS engine, while
-  // leaving normal punctuation (the single "-" in "13.0-17.0", "%", etc.)
-  // completely untouched since those only trigger on 3+ repeats.
-  String _sanitizeForSpeech(String input) {
+  // displays/reads fine as raw markdown but looks/sounds wrong once it's
+  // dropped into plain text -- "======" gets read aloud as "equal equal
+  // equal..." by TTS, and shows up literally as "======" in the PDF
+  // export. This is the shared cleanup used by both: it strips that kind
+  // of decoration while leaving normal punctuation (the single "-" in
+  // "13.0-17.0", "%", etc.) completely untouched, since those only
+  // trigger on 3+ repeats. Newlines are preserved here so callers that
+  // care about paragraph/line structure (the PDF builder) still can.
+  String _stripDecorativeSymbols(String input) {
     var text = input;
 
     // Markdown emphasis/code markers: keep the inner words, drop the
@@ -426,12 +429,22 @@ class _HomePageState extends State<HomePage> {
     // weren't part of a matched pair above.
     text = text.replaceAll(RegExp(r'[|`*_#]'), ' ');
 
-    // Collapse whatever whitespace gaps removing all of the above left
-    // behind, so there's no awkward pause where a symbol used to be.
+    // Collapse runs of spaces/tabs the above left behind, but keep
+    // newlines intact for callers that rely on line/paragraph structure.
     text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
+    text = text.replaceAll(RegExp(r'[ \t]*\n[ \t]*'), '\n');
+
+    return text.trim();
+  }
+
+  // TTS-specific wrapper: speech doesn't care about line breaks, only
+  // about natural pauses, so this additionally folds newlines into ". "
+  // after the shared symbol-stripping above.
+  String _sanitizeForSpeech(String input) {
+    var text = _stripDecorativeSymbols(input);
     text = text.replaceAll(RegExp(r'\n\s*\n+'), '. ');
     text = text.replaceAll('\n', '. ');
-
+    text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
     return text.trim();
   }
 
@@ -636,10 +649,13 @@ class _HomePageState extends State<HomePage> {
 
       // Split on sentence endings or newlines so each chunk is small
       List<String> _splitBody(String body) {
-        final raw = body.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+        final raw = _stripDecorativeSymbols(body).replaceAll('\r\n', '\n').replaceAll('\r', '\n');
         final List<String> parts = [];
         for (final para in raw.split('\n')) {
           final p = para.trim();
+          // A line that was purely a decorative separator ("======",
+          // "------", etc.) becomes empty after stripping above -- skip
+          // it entirely instead of adding a blank paragraph/bullet.
           if (p.isEmpty) continue;
           // Further split long paragraphs on '. ' boundaries (~150 chars max each)
           if (p.length <= 150) {
@@ -652,7 +668,7 @@ class _HomePageState extends State<HomePage> {
             }
           }
         }
-        return parts.isEmpty ? [body.trim()] : parts;
+        return parts.isEmpty ? [] : parts;
       }
 
       void addSection(String title, String body) {
@@ -676,6 +692,7 @@ class _HomePageState extends State<HomePage> {
         for (final b in bullets) {
           // Each bullet may itself be long — split it too
           final chunks = _splitBody(b);
+          if (chunks.isEmpty) continue; // bullet was purely decorative symbols
           items.add(pw.Text('  \u2022  ${chunks.first}', style: _bodyStyle));
           for (final extra in chunks.skip(1)) {
             items.add(pw.Text('     $extra', style: _bodyStyle));
