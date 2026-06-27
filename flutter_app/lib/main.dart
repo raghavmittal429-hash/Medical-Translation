@@ -392,31 +392,89 @@ class _HomePageState extends State<HomePage> {
   
   }
 
-  Future<void> _speak(String text) async {
+  // Report text often carries markdown-style formatting (headings, bold
+  // markers, horizontal-rule separators like "======" or "------") that
+  // reads fine visually but gets read aloud literally by speech engines
+  // -- e.g. "======" comes out as "equal equal equal...". This strips
+  // that kind of decoration before any text reaches a TTS engine, while
+  // leaving normal punctuation (the single "-" in "13.0-17.0", "%", etc.)
+  // completely untouched since those only trigger on 3+ repeats.
+  String _sanitizeForSpeech(String input) {
+    var text = input;
+
+    // Markdown emphasis/code markers: keep the inner words, drop the
+    // symbols, e.g. "**important**" -> "important", "`eGFR`" -> "eGFR".
+    text = text.replaceAllMapped(RegExp(r'\*\*(.*?)\*\*'), (m) => m.group(1) ?? '');
+    text = text.replaceAllMapped(RegExp(r'__(.*?)__'), (m) => m.group(1) ?? '');
+    text = text.replaceAllMapped(RegExp(r'(?<!\*)\*([^*\n]+)\*(?!\*)'), (m) => m.group(1) ?? '');
+    text = text.replaceAllMapped(RegExp(r'`([^`]*)`'), (m) => m.group(1) ?? '');
+
+    // Markdown headings ("## Summary" -> "Summary") and bullet markers
+    // ("- item" / "* item" -> "item") at the start of a line.
+    text = text.replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '');
+    text = text.replaceAll(RegExp(r'^\s*[-*+]\s+', multiLine: true), '');
+    text = text.replaceAll(RegExp(r'^\s*>\s*', multiLine: true), '');
+
+    // Decorative separator lines/runs: any non-word, non-space character
+    // repeated 3+ times in a row ("======", "------", "******", "~~~~").
+    // \w already excludes most of these, but underscores count as word
+    // characters in regex, so handle "___" runs explicitly too.
+    text = text.replaceAll(RegExp(r'([^\w\s])\1{2,}'), ' ');
+    text = text.replaceAll(RegExp(r'_{3,}'), ' ');
+
+    // Leftover table pipes and stray backticks/asterisks/underscores that
+    // weren't part of a matched pair above.
+    text = text.replaceAll(RegExp(r'[|`*_#]'), ' ');
+
+    // Collapse whatever whitespace gaps removing all of the above left
+    // behind, so there's no awkward pause where a symbol used to be.
+    text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
+    text = text.replaceAll(RegExp(r'\n\s*\n+'), '. ');
+    text = text.replaceAll('\n', '. ');
+
+    return text.trim();
+  }
+
+  Future<void> _speak(String rawText) async {
+    final text = _sanitizeForSpeech(rawText);
     if (text.isEmpty || !_ttsEnabled) return;
 
     await _tts.stop();
-    await _applyVoiceForLanguage(_selectedLanguage);
 
-    if (_selectedLanguage != 'English' && !_hasMatchingDeviceVoice(_selectedLanguage)) {
+    // Decide the path BEFORE doing any unrelated async setup work. Loading
+    // device voices is only relevant if we're actually going to use
+    // device TTS — running it unconditionally first just adds avoidable
+    // delay between the user's tap and the eventual audio.play() call for
+    // languages that need the backend, and that delay is exactly what can
+    // cause Chrome to silently block playback as "no longer triggered by
+    // a user gesture" (see _speakViaBackend).
+    if (_availableVoices.isEmpty) {
+      await _loadAvailableVoices();
+    }
+    final useBackend = _selectedLanguage != 'English' && !_hasMatchingDeviceVoice(_selectedLanguage);
+
+    if (useBackend) {
       try {
         await _speakViaBackend(text, _selectedLanguage);
         return;
-      } catch (_) {
-        // If backend TTS is unavailable, still give device TTS one chance.
+      } catch (e) {
+        // Fall through to give device TTS one chance, but make sure this
+        // is actually visible instead of failing in total silence like
+        // before — that silence was the entire reason this looked like
+        // it "only works for English and Hindi".
+        _showError('Cloud voice failed for $_selectedLanguage: $e');
       }
     }
 
+    await _applyVoiceForLanguage(_selectedLanguage);
     try {
-      // Try device TTS first
       await _tts.speak(text).timeout(const Duration(seconds: 90));
     } catch (e) {
-      // Device TTS failed; fall back to backend TTS if available
       if (_selectedLanguage != 'English') {
         try {
           await _speakViaBackend(text, _selectedLanguage);
-        } catch (_) {
-          // Silently fail if backend TTS also fails
+        } catch (e2) {
+          _showError('Could not play audio for $_selectedLanguage: $e2');
         }
       }
     }
@@ -424,31 +482,40 @@ class _HomePageState extends State<HomePage> {
 
   // Fall back to backend TTS endpoint for languages without device voices
   Future<void> _speakViaBackend(String text, String language) async {
+    final langCode = _languageCodeFor(language);
+    final ttsUrl = _buildApiUrl('/synthesize');
+
+    final response = await http.post(
+      ttsUrl,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'text': text, 'language': langCode}),
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      throw Exception('Backend TTS failed with status ${response.statusCode}: ${response.body}');
+    }
+
+    final base64Audio = base64Encode(response.bodyBytes);
+    final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
+
+    final audio = html.AudioElement(audioUrl);
     try {
-      final langCode = _languageCodeFor(language);
-      final ttsUrl = _buildApiUrl('/synthesize');
-      
-      final response = await http.post(
-        ttsUrl,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'text': text, 'language': langCode}),
-      ).timeout(const Duration(seconds: 30));
-      
-      if (response.statusCode == 200) {
-        // Play audio using HTML audio element
-        final base64Audio = base64Encode(response.bodyBytes);
-        final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
-        
-        // Use JavaScript to play audio
-        html.AudioElement audio = html.AudioElement(audioUrl);
-        await audio.play().catchError((_) {
-          // Ignore play errors
-        });
-      } else {
-        throw Exception('Backend TTS failed with status ${response.statusCode}');
-      }
-    } catch (_) {
-      rethrow;
+      // IMPORTANT: do not swallow this error. A rejected play() Promise
+      // here (typically a NotAllowedError from Chrome's autoplay policy,
+      // since enough async work happened between the tap and this call
+      // that the browser no longer considers it "triggered by a user
+      // gesture") was previously caught and discarded silently — meaning
+      // every language that had to take this path appeared to do
+      // *nothing at all* with no error anywhere, which is exactly the
+      // "works for English/Hindi, not the rest" symptom: those two
+      // languages almost always have a device voice and never reach this
+      // code path at all, so they were never affected.
+      await audio.play();
+    } catch (e) {
+      throw Exception(
+        'Audio playback was blocked by the browser ($e). Try tapping the '
+        'speaker icon again.',
+      );
     }
   }
 
