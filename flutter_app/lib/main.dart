@@ -396,27 +396,41 @@ class _HomePageState extends State<HomePage> {
     if (text.isEmpty || !_ttsEnabled) return;
 
     await _tts.stop();
-    await _applyVoiceForLanguage(_selectedLanguage);
 
-    if (_selectedLanguage != 'English' && !_hasMatchingDeviceVoice(_selectedLanguage)) {
+    // Decide the path BEFORE doing any unrelated async setup work. Loading
+    // device voices is only relevant if we're actually going to use
+    // device TTS — running it unconditionally first just adds avoidable
+    // delay between the user's tap and the eventual audio.play() call for
+    // languages that need the backend, and that delay is exactly what can
+    // cause Chrome to silently block playback as "no longer triggered by
+    // a user gesture" (see _speakViaBackend).
+    if (_availableVoices.isEmpty) {
+      await _loadAvailableVoices();
+    }
+    final useBackend = _selectedLanguage != 'English' && !_hasMatchingDeviceVoice(_selectedLanguage);
+
+    if (useBackend) {
       try {
         await _speakViaBackend(text, _selectedLanguage);
         return;
-      } catch (_) {
-        // If backend TTS is unavailable, still give device TTS one chance.
+      } catch (e) {
+        // Fall through to give device TTS one chance, but make sure this
+        // is actually visible instead of failing in total silence like
+        // before — that silence was the entire reason this looked like
+        // it "only works for English and Hindi".
+        _showError('Cloud voice failed for $_selectedLanguage: $e');
       }
     }
 
+    await _applyVoiceForLanguage(_selectedLanguage);
     try {
-      // Try device TTS first
       await _tts.speak(text).timeout(const Duration(seconds: 90));
     } catch (e) {
-      // Device TTS failed; fall back to backend TTS if available
       if (_selectedLanguage != 'English') {
         try {
           await _speakViaBackend(text, _selectedLanguage);
-        } catch (_) {
-          // Silently fail if backend TTS also fails
+        } catch (e2) {
+          _showError('Could not play audio for $_selectedLanguage: $e2');
         }
       }
     }
@@ -424,31 +438,40 @@ class _HomePageState extends State<HomePage> {
 
   // Fall back to backend TTS endpoint for languages without device voices
   Future<void> _speakViaBackend(String text, String language) async {
+    final langCode = _languageCodeFor(language);
+    final ttsUrl = _buildApiUrl('/synthesize');
+
+    final response = await http.post(
+      ttsUrl,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'text': text, 'language': langCode}),
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      throw Exception('Backend TTS failed with status ${response.statusCode}: ${response.body}');
+    }
+
+    final base64Audio = base64Encode(response.bodyBytes);
+    final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
+
+    final audio = html.AudioElement(audioUrl);
     try {
-      final langCode = _languageCodeFor(language);
-      final ttsUrl = _buildApiUrl('/synthesize');
-      
-      final response = await http.post(
-        ttsUrl,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'text': text, 'language': langCode}),
-      ).timeout(const Duration(seconds: 30));
-      
-      if (response.statusCode == 200) {
-        // Play audio using HTML audio element
-        final base64Audio = base64Encode(response.bodyBytes);
-        final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
-        
-        // Use JavaScript to play audio
-        html.AudioElement audio = html.AudioElement(audioUrl);
-        await audio.play().catchError((_) {
-          // Ignore play errors
-        });
-      } else {
-        throw Exception('Backend TTS failed with status ${response.statusCode}');
-      }
-    } catch (_) {
-      rethrow;
+      // IMPORTANT: do not swallow this error. A rejected play() Promise
+      // here (typically a NotAllowedError from Chrome's autoplay policy,
+      // since enough async work happened between the tap and this call
+      // that the browser no longer considers it "triggered by a user
+      // gesture") was previously caught and discarded silently — meaning
+      // every language that had to take this path appeared to do
+      // *nothing at all* with no error anywhere, which is exactly the
+      // "works for English/Hindi, not the rest" symptom: those two
+      // languages almost always have a device voice and never reach this
+      // code path at all, so they were never affected.
+      await audio.play();
+    } catch (e) {
+      throw Exception(
+        'Audio playback was blocked by the browser ($e). Try tapping the '
+        'speaker icon again.',
+      );
     }
   }
 
