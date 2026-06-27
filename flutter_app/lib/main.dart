@@ -392,7 +392,51 @@ class _HomePageState extends State<HomePage> {
   
   }
 
-  Future<void> _speak(String text) async {
+  // Report text often carries markdown-style formatting (headings, bold
+  // markers, horizontal-rule separators like "======" or "------") that
+  // reads fine visually but gets read aloud literally by speech engines
+  // -- e.g. "======" comes out as "equal equal equal...". This strips
+  // that kind of decoration before any text reaches a TTS engine, while
+  // leaving normal punctuation (the single "-" in "13.0-17.0", "%", etc.)
+  // completely untouched since those only trigger on 3+ repeats.
+  String _sanitizeForSpeech(String input) {
+    var text = input;
+
+    // Markdown emphasis/code markers: keep the inner words, drop the
+    // symbols, e.g. "**important**" -> "important", "`eGFR`" -> "eGFR".
+    text = text.replaceAllMapped(RegExp(r'\*\*(.*?)\*\*'), (m) => m.group(1) ?? '');
+    text = text.replaceAllMapped(RegExp(r'__(.*?)__'), (m) => m.group(1) ?? '');
+    text = text.replaceAllMapped(RegExp(r'(?<!\*)\*([^*\n]+)\*(?!\*)'), (m) => m.group(1) ?? '');
+    text = text.replaceAllMapped(RegExp(r'`([^`]*)`'), (m) => m.group(1) ?? '');
+
+    // Markdown headings ("## Summary" -> "Summary") and bullet markers
+    // ("- item" / "* item" -> "item") at the start of a line.
+    text = text.replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '');
+    text = text.replaceAll(RegExp(r'^\s*[-*+]\s+', multiLine: true), '');
+    text = text.replaceAll(RegExp(r'^\s*>\s*', multiLine: true), '');
+
+    // Decorative separator lines/runs: any non-word, non-space character
+    // repeated 3+ times in a row ("======", "------", "******", "~~~~").
+    // \w already excludes most of these, but underscores count as word
+    // characters in regex, so handle "___" runs explicitly too.
+    text = text.replaceAll(RegExp(r'([^\w\s])\1{2,}'), ' ');
+    text = text.replaceAll(RegExp(r'_{3,}'), ' ');
+
+    // Leftover table pipes and stray backticks/asterisks/underscores that
+    // weren't part of a matched pair above.
+    text = text.replaceAll(RegExp(r'[|`*_#]'), ' ');
+
+    // Collapse whatever whitespace gaps removing all of the above left
+    // behind, so there's no awkward pause where a symbol used to be.
+    text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
+    text = text.replaceAll(RegExp(r'\n\s*\n+'), '. ');
+    text = text.replaceAll('\n', '. ');
+
+    return text.trim();
+  }
+
+  Future<void> _speak(String rawText) async {
+    final text = _sanitizeForSpeech(rawText);
     if (text.isEmpty || !_ttsEnabled) return;
 
     await _tts.stop();
