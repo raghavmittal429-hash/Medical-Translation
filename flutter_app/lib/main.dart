@@ -42,6 +42,18 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   FlutterTts _tts = FlutterTts();
 
+  // Speech playback state. _activeSpeechKey stores the *raw* (un-
+  // sanitized) text passed to _speak(), so each section card's speak
+  // button can check "is this card the one currently playing?" by
+  // comparing against its own `content` string directly, without having
+  // to re-run sanitization just to compare.
+  String? _activeSpeechKey;
+  bool _isSpeaking = false;
+  bool _isPaused = false;
+  // Only set while audio is playing via the backend (gTTS) path -- null
+  // means the device voice (flutter_tts) path is active, if any.
+  html.AudioElement? _currentAudio;
+
   // Data state
   Map<String, dynamic>? _reportData;
   bool _isLoading = false;
@@ -80,6 +92,26 @@ class _HomePageState extends State<HomePage> {
     await _tts.setSpeechRate(0.45);
     await _tts.setPitch(1.0);
     await _tts.awaitSpeakCompletion(true);
+
+    // Keep _isSpeaking/_isPaused truthful for the device-voice path by
+    // reacting to the engine's own lifecycle events, instead of guessing
+    // from whether an awaited Future has returned yet.
+    _tts.setStartHandler(() {
+      if (mounted) setState(() { _isSpeaking = true; _isPaused = false; });
+    });
+    _tts.setCompletionHandler(() {
+      if (mounted) setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
+    });
+    _tts.setPauseHandler(() {
+      if (mounted) setState(() { _isSpeaking = false; _isPaused = true; });
+    });
+    _tts.setContinueHandler(() {
+      if (mounted) setState(() { _isSpeaking = true; _isPaused = false; });
+    });
+    _tts.setErrorHandler((dynamic msg) {
+      if (mounted) setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
+    });
+
     await _loadAvailableVoices();
     await _applyVoiceForLanguage(_selectedLanguage);
   }
@@ -429,6 +461,18 @@ class _HomePageState extends State<HomePage> {
     // weren't part of a matched pair above.
     text = text.replaceAll(RegExp(r'[|`*_#]'), ' ');
 
+    // Emoji and pictographic symbols (warning signs, checkmarks, arrows,
+    // etc.). Some TTS engines vocalize these literally by name -- a "⚠️"
+    // gets read aloud as "warning" -- which is meaningless and jarring in
+    // a medical report. Covers the common emoji/symbol Unicode blocks:
+    // Miscellaneous Symbols & Dingbats, Misc Symbols and Arrows, and the
+    // full modern emoji range (U+1F000-U+1FFFF), plus the variation
+    // selector and zero-width joiner used to combine emoji.
+    text = text.replaceAll(
+      RegExp(r'[\u2600-\u27BF\u2B00-\u2BFF\u{1F000}-\u{1FFFF}\uFE0E\uFE0F\u200D]', unicode: true),
+      ' ',
+    );
+
     // Collapse runs of spaces/tabs the above left behind, but keep
     // newlines intact for callers that rely on line/paragraph structure.
     text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
@@ -452,7 +496,10 @@ class _HomePageState extends State<HomePage> {
     final text = _sanitizeForSpeech(rawText);
     if (text.isEmpty || !_ttsEnabled) return;
 
-    await _tts.stop();
+    // Clean slate: stop whatever was playing/paused before starting this
+    // section's text, so only one thing is ever speaking at a time and
+    // the play/pause/stop state for the previous card resets correctly.
+    await _stopSpeaking();
 
     // Decide the path BEFORE doing any unrelated async setup work. Loading
     // device voices is only relevant if we're actually going to use
@@ -465,6 +512,12 @@ class _HomePageState extends State<HomePage> {
       await _loadAvailableVoices();
     }
     final useBackend = _selectedLanguage != 'English' && !_hasMatchingDeviceVoice(_selectedLanguage);
+
+    setState(() {
+      _activeSpeechKey = rawText;
+      _isSpeaking = true;
+      _isPaused = false;
+    });
 
     if (useBackend) {
       try {
@@ -482,14 +535,57 @@ class _HomePageState extends State<HomePage> {
     await _applyVoiceForLanguage(_selectedLanguage);
     try {
       await _tts.speak(text).timeout(const Duration(seconds: 90));
+      // setCompletionHandler (registered in _initTts) already clears
+      // _isSpeaking/_isPaused/_activeSpeechKey on normal completion. This
+      // covers the timeout case, where that handler never fires because
+      // nothing actually completed.
+      if (mounted && _activeSpeechKey == rawText) {
+        setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
+      }
     } catch (e) {
       if (_selectedLanguage != 'English') {
         try {
           await _speakViaBackend(text, _selectedLanguage);
+          return;
         } catch (e2) {
           _showError('Could not play audio for $_selectedLanguage: $e2');
         }
       }
+      if (mounted && _activeSpeechKey == rawText) {
+        setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
+      }
+    }
+  }
+
+  Future<void> _pauseSpeaking() async {
+    if (_currentAudio != null) {
+      _currentAudio!.pause(); // fires the onPause listener below, which updates state
+    } else {
+      await _tts.pause(); // fires setPauseHandler via the browser's speechSynthesis.pause()
+    }
+  }
+
+  Future<void> _resumeSpeaking() async {
+    if (_currentAudio != null) {
+      try {
+        await _currentAudio!.play();
+      } catch (e) {
+        _showError('Could not resume playback: $e');
+      }
+    } else {
+      await _tts.resume();
+    }
+  }
+
+  Future<void> _stopSpeaking() async {
+    if (_currentAudio != null) {
+      _currentAudio!.pause();
+      _currentAudio!.currentTime = 0;
+      _currentAudio = null;
+    }
+    await _tts.stop();
+    if (mounted) {
+      setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
     }
   }
 
@@ -512,6 +608,27 @@ class _HomePageState extends State<HomePage> {
     final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
 
     final audio = html.AudioElement(audioUrl);
+    _currentAudio = audio;
+
+    audio.onEnded.listen((_) {
+      if (mounted && _currentAudio == audio) {
+        setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; _currentAudio = null; });
+      }
+    });
+    // HTML audio elements also fire 'pause' right before 'ended' in some
+    // browsers, so only treat it as a real user-facing pause if playback
+    // genuinely hasn't finished yet.
+    audio.onPause.listen((_) {
+      if (mounted && _currentAudio == audio && !audio.ended) {
+        setState(() { _isSpeaking = false; _isPaused = true; });
+      }
+    });
+    audio.onPlay.listen((_) {
+      if (mounted && _currentAudio == audio) {
+        setState(() { _isSpeaking = true; _isPaused = false; });
+      }
+    });
+
     try {
       // IMPORTANT: do not swallow this error. A rejected play() Promise
       // here (typically a NotAllowedError from Chrome's autoplay policy,
@@ -525,6 +642,7 @@ class _HomePageState extends State<HomePage> {
       // code path at all, so they were never affected.
       await audio.play();
     } catch (e) {
+      _currentAudio = null;
       throw Exception(
         'Audio playback was blocked by the browser ($e). Try tapping the '
         'speaker icon again.',
@@ -2003,12 +2121,36 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 if (extraAction != null) extraAction,
-                if (canSpeak)
+                if (canSpeak) ...[
                   IconButton(
-                    icon: const Icon(Icons.volume_up, color: Color(0xFFA01A1A)),
-                    onPressed: () => _speak(content),
-                    tooltip: 'Speak',
+                    icon: Icon(
+                      _activeSpeechKey == content && _isSpeaking
+                          ? Icons.pause_circle_filled
+                          : _activeSpeechKey == content && _isPaused
+                              ? Icons.play_circle_filled
+                              : Icons.volume_up,
+                      color: const Color(0xFFA01A1A),
+                    ),
+                    onPressed: () {
+                      if (_activeSpeechKey == content && _isSpeaking) {
+                        _pauseSpeaking();
+                      } else if (_activeSpeechKey == content && _isPaused) {
+                        _resumeSpeaking();
+                      } else {
+                        _speak(content);
+                      }
+                    },
+                    tooltip: _activeSpeechKey == content
+                        ? (_isSpeaking ? 'Pause' : (_isPaused ? 'Resume' : 'Speak'))
+                        : 'Speak',
                   ),
+                  if (_activeSpeechKey == content && (_isSpeaking || _isPaused))
+                    IconButton(
+                      icon: const Icon(Icons.stop_circle, color: Color(0xFFA01A1A)),
+                      onPressed: _stopSpeaking,
+                      tooltip: 'Stop',
+                    ),
+                ],
               ],
             ),
             const Divider(),
@@ -2979,6 +3121,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _tts.stop();
+    _currentAudio?.pause();
     _pollingTimer?.cancel();
     super.dispose();
   }

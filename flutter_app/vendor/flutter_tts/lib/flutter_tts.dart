@@ -359,6 +359,11 @@ class FlutterTts {
   /// [Future] which invokes the platform specific method for pause
   Future<dynamic> pause() async => await _channel.invokeMethod('pause');
 
+  /// [Future] which invokes the platform specific method for resume.
+  /// Added locally -- the upstream flutter_tts package never implemented
+  /// a way to resume after pause() on any platform, web included.
+  Future<dynamic> resume() async => await _channel.invokeMethod('resume');
+
   /// [Future] which invokes the platform specific method for getMaxSpeechInputLength
   /// ***Android supported only***
   Future<int?> get getMaxSpeechInputLength async {

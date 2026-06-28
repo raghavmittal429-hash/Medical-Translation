@@ -124,6 +124,9 @@ class FlutterTtsPlugin {
       case 'pause':
         _pause();
         return 1;
+      case 'resume':
+        _resume();
+        return 1;
       case 'setLanguage':
         final language = call.arguments as String?;
         _setLanguage(language);
@@ -189,6 +192,13 @@ class FlutterTtsPlugin {
   void _pause() {
     if (ttsState == TtsState.playing || ttsState == TtsState.continued) {
       synth.callMethod('pause');
+    }
+  }
+
+  void _resume() {
+    if (ttsState == TtsState.paused) {
+      synth.callMethod('resume');
+      ttsState = TtsState.continued;
     }
   }
 
