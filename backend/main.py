@@ -11,6 +11,7 @@ from starlette.requests import Request
 from starlette.routing import Route
 from gtts import gTTS
 import io
+import edge_tts_voices
 import shutil
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -456,7 +457,11 @@ async def retranslate_report(request: Request):
 
 # ============== TTS Endpoint ==============
 async def synthesize_speech(request: Request):
-    """Generate speech audio from text using gTTS (supports Indian languages)."""
+    """Generate speech audio. Tries Microsoft Edge's free neural voices
+    first (noticeably more natural-sounding than gTTS's older engine),
+    falling back to gTTS automatically if Edge's service is unreachable
+    -- both are free, no-API-key services, so this never requires any
+    configuration either way."""
     try:
         body = await request.json()
         text = body.get("text", "").strip()
@@ -465,7 +470,7 @@ async def synthesize_speech(request: Request):
         if not text:
             return JSONResponse({"detail": "Missing or empty text"}, status_code=400)
         
-        # Map language names to gTTS language codes
+        # Map language names to language codes (shared by both engines)
         lang_map = {
             "english": "en", "en": "en",
             "hindi": "hi", "hi": "hi",
@@ -484,18 +489,26 @@ async def synthesize_speech(request: Request):
         
         # Resolve language code
         lang_code = lang_map.get(language, "hi")
-        
-        # Generate speech
-        tts = gTTS(text=text, lang=lang_code, slow=False)
-        
-        # Save to in-memory bytes
-        audio_bytes = io.BytesIO()
-        tts.write_to_fp(audio_bytes)
-        audio_bytes.seek(0)
-        
+
+        audio_content = None
+        try:
+            audio_content = await edge_tts_voices.synthesize(text, lang_code)
+        except Exception as e:
+            print(f"[synthesize] Edge TTS unavailable ({e}), falling back to gTTS")
+
+        if audio_content is None:
+            # Generate speech
+            tts = gTTS(text=text, lang=lang_code, slow=False)
+
+            # Save to in-memory bytes
+            audio_bytes = io.BytesIO()
+            tts.write_to_fp(audio_bytes)
+            audio_bytes.seek(0)
+            audio_content = audio_bytes.getvalue()
+
         # Return as streaming response
         return StreamingResponse(
-            iter([audio_bytes.getvalue()]),
+            iter([audio_content]),
             media_type="audio/mpeg",
             headers={"Content-Disposition": "inline; filename=speech.mp3"}
         )
