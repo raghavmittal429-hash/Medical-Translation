@@ -1738,26 +1738,30 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 16),
           
-          // Translated Card
-          _buildSectionCard(
-            title: '$_selectedLanguage Explanation',
-            icon: Icons.translate,
-            content: _isTranslating
-                ? '⏳ Translating to $_selectedLanguage...'
-                : (_reportData!['translated_explanation']?.toString().isNotEmpty == true
-                    ? _reportData!['translated_explanation']
-                    : 'Translation not available. Tap the language button above to retranslate.'),
-            canSpeak: !_isTranslating,
-            extraAction: _reportData != null && !_isTranslating
-                ? IconButton(
-                    icon: const Icon(Icons.refresh, size: 20),
-                    tooltip: 'Retranslate',
-                    color: const Color(0xFFA01A1A),
-                    onPressed: () => _retranslate(_selectedLanguage),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 16),
+          // Translated Card -- only shown for a non-English language,
+          // since for English this duplicated the Simple Explanation
+          // card above with identical content.
+          if (_selectedLanguage != 'English') ...[
+            _buildSectionCard(
+              title: '$_selectedLanguage Explanation',
+              icon: Icons.translate,
+              content: _isTranslating
+                  ? '⏳ Translating to $_selectedLanguage...'
+                  : (_reportData!['translated_explanation']?.toString().isNotEmpty == true
+                      ? _reportData!['translated_explanation']
+                      : 'Translation not available. Tap the language button above to retranslate.'),
+              canSpeak: !_isTranslating,
+              extraAction: _reportData != null && !_isTranslating
+                  ? IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      tooltip: 'Retranslate',
+                      color: const Color(0xFFA01A1A),
+                      onPressed: () => _retranslate(_selectedLanguage),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 16),
+          ],
           
           // Suggestions Card
           if (_reportData!['suggestions'] != null &&
