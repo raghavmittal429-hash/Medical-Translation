@@ -1531,8 +1531,6 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildResultOverview() {
     final risk = ((_reportData!['risk_probability'] ?? 0) as num).toDouble();
-    final suggestions = _asStringList(_reportData!['translated_suggestions']);
-    final hasHindiGuide = (_reportData!['disease_explanation_hi'] ?? '').toString().trim().isNotEmpty;
     final factors = _causalFactors();
 
     return Card(
@@ -1575,8 +1573,6 @@ class _HomePageState extends State<HomePage> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildInfoChip(Icons.translate, hasHindiGuide ? 'Hindi guide ready' : 'Basic guide ready'),
-                _buildInfoChip(Icons.fact_check, '${suggestions.length} improvement steps'),
                 _buildInfoChip(Icons.analytics, '${factors.length} risk factors'),
                 _buildInfoChip(Icons.volume_up, 'Voice support'),
               ],
