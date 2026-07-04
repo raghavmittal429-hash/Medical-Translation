@@ -134,6 +134,17 @@ def process_report_async(job_id: str):
         if not raw_text or len(raw_text.strip()) < 10:
             raise Exception("Could not extract text from image")
 
+        # ── Document type gate ─────────────────────────────────
+        # Check BEFORE running any pipeline agents. Without this, any
+        # document (resume, invoice, article) that contains numbers and
+        # bullet points can accidentally match the lab-value regex and
+        # produce completely fabricated medical output. Fail fast with a
+        # clear user-facing message instead.
+        update_progress(15, "Verifying document type...")
+        is_medical, reason = agents.is_medical_document(raw_text)
+        if not is_medical:
+            raise Exception(reason)
+
         update_progress(20, "Parsing medical data...")
 
         initial_state = agents.get_default_state(
