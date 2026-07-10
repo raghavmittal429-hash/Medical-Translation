@@ -12,6 +12,7 @@ from starlette.routing import Route
 from gtts import gTTS
 import io
 import edge_tts_voices
+import elevenlabs_tts
 import shutil
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -468,20 +469,19 @@ async def retranslate_report(request: Request):
 
 # ============== TTS Endpoint ==============
 async def synthesize_speech(request: Request):
-    """Generate speech audio. Tries Microsoft Edge's free neural voices
-    first (noticeably more natural-sounding than gTTS's older engine),
-    falling back to gTTS automatically if Edge's service is unreachable
-    -- both are free, no-API-key services, so this never requires any
-    configuration either way."""
+    """Generate speech audio using a three-tier fallback chain:
+    1. ElevenLabs Multilingual v2 (best quality, needs ELEVENLABS_API_KEY)
+    2. Microsoft Edge TTS neural voices (free, no key needed)
+    3. gTTS / Google Translate TTS (free fallback, always available)
+    The first tier that succeeds is used; failures are logged and skipped."""
     try:
         body = await request.json()
         text = body.get("text", "").strip()
         language = body.get("language", "hi").lower()
-        
+
         if not text:
             return JSONResponse({"detail": "Missing or empty text"}, status_code=400)
-        
-        # Map language names to language codes (shared by both engines)
+
         lang_map = {
             "english": "en", "en": "en",
             "hindi": "hi", "hi": "hi",
@@ -497,27 +497,36 @@ async def synthesize_speech(request: Request):
             "assamese": "as", "as": "as",
             "urdu": "ur", "ur": "ur",
         }
-        
-        # Resolve language code
         lang_code = lang_map.get(language, "hi")
 
         audio_content = None
+
+        # ── Tier 1: ElevenLabs Multilingual v2 ──────────────────────
         try:
-            audio_content = await edge_tts_voices.synthesize(text, lang_code)
-        except Exception as e:
-            print(f"[synthesize] Edge TTS unavailable ({e}), falling back to gTTS")
+            audio_content = elevenlabs_tts.synthesize(text, lang_code)
+            print(f"[synthesize] ElevenLabs OK for lang={lang_code}")
+        except elevenlabs_tts.ElevenLabsConfigError:
+            print(f"[synthesize] ElevenLabs not configured (no API key), trying Edge TTS")
+        except elevenlabs_tts.ElevenLabsTtsError as e:
+            print(f"[synthesize] ElevenLabs failed ({e}), trying Edge TTS")
 
+        # ── Tier 2: Microsoft Edge TTS neural voices ─────────────────
         if audio_content is None:
-            # Generate speech
-            tts = gTTS(text=text, lang=lang_code, slow=False)
+            try:
+                audio_content = await edge_tts_voices.synthesize(text, lang_code)
+                print(f"[synthesize] Edge TTS OK for lang={lang_code}")
+            except Exception as e:
+                print(f"[synthesize] Edge TTS failed ({e}), falling back to gTTS")
 
-            # Save to in-memory bytes
+        # ── Tier 3: gTTS (Google Translate, always available) ────────
+        if audio_content is None:
+            tts = gTTS(text=text, lang=lang_code, slow=False)
             audio_bytes = io.BytesIO()
             tts.write_to_fp(audio_bytes)
             audio_bytes.seek(0)
             audio_content = audio_bytes.getvalue()
+            print(f"[synthesize] gTTS fallback used for lang={lang_code}")
 
-        # Return as streaming response
         return StreamingResponse(
             iter([audio_content]),
             media_type="audio/mpeg",
