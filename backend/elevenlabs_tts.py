@@ -9,9 +9,10 @@ Voice model: eleven_multilingual_v2
 - Best quality for Indian languages (Hindi, Tamil, Telugu, Malayalam, etc.)
 - Natural, expressive speech with correct phonemes for each script
 
-Voice: Aria (9BWtsMINqrJLrRacOk9x)
-- ElevenLabs' best multilingual voice -- handles Indian language phonemes
-  more naturally than the older Rachel voice
+Voice: Rachel (21m00Tcm4TlvDq8ikWAM)
+- ElevenLabs' built-in voice, available on ALL plans including free tier
+- Library/community voices (like Aria) require a paid subscription --
+  using them on a free account returns HTTP 402 payment_required
 - Calm, clear, professional tone suited for medical report narration
 
 Falls back to Edge TTS -> gTTS automatically if:
@@ -27,9 +28,11 @@ from elevenlabs import VoiceSettings
 # eleven_multilingual_v2: best quality model for all 9 Indian languages
 MODEL_ID = "eleven_multilingual_v2"
 
-# Aria -- ElevenLabs' most capable multilingual voice.
-# Handles Devanagari, Tamil, Telugu, Malayalam, Bengali scripts naturally.
-DEFAULT_VOICE_ID = "9BWtsMINqrJLrRacOk9x"
+# Rachel -- ElevenLabs' free built-in voice, works on all plans.
+# Library/community voices like Aria require a paid subscription and
+# return HTTP 402 on free accounts. Rachel handles all Indian language
+# scripts naturally via eleven_multilingual_v2.
+DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
 
 # Voice settings tuned for medical report narration:
 # - stability 0.55: slightly more expressive than the old 0.65, avoids
