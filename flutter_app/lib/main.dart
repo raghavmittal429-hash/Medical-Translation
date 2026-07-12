@@ -598,26 +598,29 @@ class _HomePageState extends State<HomePage> {
       ttsUrl,
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'text': text, 'language': langCode}),
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(const Duration(seconds: 60));
 
     if (response.statusCode != 200) {
       throw Exception('Backend TTS failed with status ${response.statusCode}: ${response.body}');
     }
 
-    final base64Audio = base64Encode(response.bodyBytes);
-    final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
+    // Use a Blob URL instead of a data URI. Chrome silently rejects data
+    // URIs larger than ~2MB (Sarvam's high-quality audio can reach 3-4MB
+    // for longer sections), causing playback to fail without any error.
+    // Blob URLs have no size limit and are the correct approach for
+    // in-memory audio playback in a browser context.
+    final blob = html.Blob([response.bodyBytes], 'audio/mpeg');
+    final audioUrl = html.Url.createObjectUrlFromBlob(blob);
 
     final audio = html.AudioElement(audioUrl);
     _currentAudio = audio;
 
     audio.onEnded.listen((_) {
+      html.Url.revokeObjectUrl(audioUrl); // free memory once done
       if (mounted && _currentAudio == audio) {
         setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; _currentAudio = null; });
       }
     });
-    // HTML audio elements also fire 'pause' right before 'ended' in some
-    // browsers, so only treat it as a real user-facing pause if playback
-    // genuinely hasn't finished yet.
     audio.onPause.listen((_) {
       if (mounted && _currentAudio == audio && !audio.ended) {
         setState(() { _isSpeaking = false; _isPaused = true; });
@@ -630,18 +633,9 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      // IMPORTANT: do not swallow this error. A rejected play() Promise
-      // here (typically a NotAllowedError from Chrome's autoplay policy,
-      // since enough async work happened between the tap and this call
-      // that the browser no longer considers it "triggered by a user
-      // gesture") was previously caught and discarded silently — meaning
-      // every language that had to take this path appeared to do
-      // *nothing at all* with no error anywhere, which is exactly the
-      // "works for English/Hindi, not the rest" symptom: those two
-      // languages almost always have a device voice and never reach this
-      // code path at all, so they were never affected.
       await audio.play();
     } catch (e) {
+      html.Url.revokeObjectUrl(audioUrl);
       _currentAudio = null;
       throw Exception(
         'Audio playback was blocked by the browser ($e). Try tapping the '
