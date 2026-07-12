@@ -26,7 +26,7 @@ import os
 from sarvamai import SarvamAI
 
 MODEL = "bulbul:v3"
-DEFAULT_SPEAKER = "anushka"
+DEFAULT_SPEAKER = "priya"  # v3-compatible; anushka is v2-only
 
 # BCP-47 language codes Sarvam expects
 LANGUAGE_CODE_MAP = {
