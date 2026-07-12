@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -571,47 +572,73 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Fall back to backend TTS endpoint for languages without device voices
-  Future<void> _speakViaBackend(String text, String language) async {
-    final langCode = _languageCodeFor(language);
-    final ttsUrl = _buildApiUrl('/synthesize');
+  // Splits text into sentence-sized chunks for progressive playback.
+  // Smaller chunks = faster first-audio, at the cost of a tiny gap between
+  // sentences. 350 chars gives roughly 2-3 sentences per chunk which
+  // Sarvam can synthesize in ~0.5-1 second.
+  List<String> _splitIntoSpeechChunks(String text, {int maxLen = 350}) {
+    text = text.trim();
+    if (text.isEmpty) return [];
+    if (text.length <= maxLen) return [text];
 
+    final chunks = <String>[];
+    while (text.isNotEmpty) {
+      if (text.length <= maxLen) {
+        chunks.add(text);
+        break;
+      }
+      final slice = text.substring(0, maxLen);
+      // Prefer breaking at a sentence boundary
+      var cut = [
+        slice.lastIndexOf('. '),
+        slice.lastIndexOf('। '), // Devanagari full stop
+        slice.lastIndexOf('? '),
+        slice.lastIndexOf('! '),
+        slice.lastIndexOf('\n'),
+        slice.lastIndexOf(', '),
+      ].where((i) => i > 50).fold(-1, (best, i) => i > best ? i : best);
+
+      if (cut < 0) cut = maxLen;
+      else cut += 1;
+
+      chunks.add(text.substring(0, cut).trim());
+      text = text.substring(cut).trim();
+    }
+    return chunks.where((c) => c.isNotEmpty).toList();
+  }
+
+  // Fetches audio for a single text chunk from the backend.
+  Future<Uint8List> _fetchChunkAudio(String chunk, String langCode) async {
+    final ttsUrl = _buildApiUrl('/synthesize');
     final response = await http.post(
       ttsUrl,
       headers: {'Content-Type': 'application/json'},
-      body: json.encode({'text': text, 'language': langCode}),
-    ).timeout(const Duration(seconds: 60));
+      body: json.encode({'text': chunk, 'language': langCode}),
+    ).timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
-      throw Exception('Backend TTS failed with status ${response.statusCode}: ${response.body}');
+      throw Exception('Backend TTS failed (${response.statusCode}): ${response.body}');
     }
+    return response.bodyBytes;
+  }
 
-    // Use a Blob URL instead of a data URI. Chrome silently rejects data
-    // URIs larger than ~2MB (Sarvam's high-quality audio can reach 3-4MB
-    // for longer sections), causing playback to fail without any error.
-    // Blob URLs have no size limit and are the correct approach for
-    // in-memory audio playback in a browser context.
-    final blob = html.Blob([response.bodyBytes], 'audio/mpeg');
+  // Plays a single audio blob and waits for it to finish.
+  // Returns false if playback was stopped/interrupted before completion.
+  Future<bool> _playAudioBytes(Uint8List bytes, String speechKey) async {
+    final blob = html.Blob([bytes], 'audio/mpeg');
     final audioUrl = html.Url.createObjectUrlFromBlob(blob);
-
     final audio = html.AudioElement(audioUrl);
     _currentAudio = audio;
 
+    final completer = Completer<bool>();
+
     audio.onEnded.listen((_) {
-      html.Url.revokeObjectUrl(audioUrl); // free memory once done
-      if (mounted && _currentAudio == audio) {
-        setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; _currentAudio = null; });
-      }
+      html.Url.revokeObjectUrl(audioUrl);
+      if (!completer.isCompleted) completer.complete(true);
     });
-    audio.onPause.listen((_) {
-      if (mounted && _currentAudio == audio && !audio.ended) {
-        setState(() { _isSpeaking = false; _isPaused = true; });
-      }
-    });
-    audio.onPlay.listen((_) {
-      if (mounted && _currentAudio == audio) {
-        setState(() { _isSpeaking = true; _isPaused = false; });
-      }
+    audio.onError.listen((_) {
+      html.Url.revokeObjectUrl(audioUrl);
+      if (!completer.isCompleted) completer.complete(false);
     });
 
     try {
@@ -619,10 +646,47 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       html.Url.revokeObjectUrl(audioUrl);
       _currentAudio = null;
-      throw Exception(
-        'Audio playback was blocked by the browser ($e). Try tapping the '
-        'speaker icon again.',
-      );
+      throw Exception('Audio playback blocked by browser: $e. Tap again.');
+    }
+
+    return completer.future;
+  }
+
+  // Backend TTS with progressive chunk playback.
+  // Splits text into ~350-char sentence chunks, fetches and plays each one
+  // sequentially. The first chunk (~2-3 sentences) arrives in ~0.5-1s so
+  // audio starts almost immediately instead of waiting for the full text.
+  Future<void> _speakViaBackend(String text, String language) async {
+    final langCode = _languageCodeFor(language);
+    final chunks = _splitIntoSpeechChunks(text);
+    if (chunks.isEmpty) return;
+
+    final speechKey = text; // used to detect if _speak was called again
+
+    for (var i = 0; i < chunks.length; i++) {
+      // Check if the user stopped or tapped a different card
+      if (_activeSpeechKey != speechKey || !_isSpeaking) return;
+
+      final bytes = await _fetchChunkAudio(chunks[i], langCode);
+
+      // Still active after the fetch?
+      if (_activeSpeechKey != speechKey || !_isSpeaking) return;
+
+      final completed = await _playAudioBytes(bytes, speechKey);
+
+      // If the audio ended naturally, loop continues to the next chunk.
+      // If it was interrupted (stop/pause tap), exit.
+      if (!completed || _activeSpeechKey != speechKey || !_isSpeaking) return;
+    }
+
+    // All chunks played — clean up state
+    if (mounted && _activeSpeechKey == speechKey) {
+      setState(() {
+        _isSpeaking = false;
+        _isPaused = false;
+        _activeSpeechKey = null;
+        _currentAudio = null;
+      });
     }
   }
 
