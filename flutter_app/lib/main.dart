@@ -496,22 +496,9 @@ class _HomePageState extends State<HomePage> {
     final text = _sanitizeForSpeech(rawText);
     if (text.isEmpty || !_ttsEnabled) return;
 
-    // Clean slate: stop whatever was playing/paused before starting this
-    // section's text, so only one thing is ever speaking at a time and
-    // the play/pause/stop state for the previous card resets correctly.
+    // Stop everything currently playing BEFORE starting anything new.
+    // This must happen synchronously before any async work below.
     await _stopSpeaking();
-
-    // Decide the path BEFORE doing any unrelated async setup work. Loading
-    // device voices is only relevant if we're actually going to use
-    // device TTS — running it unconditionally first just adds avoidable
-    // delay between the user's tap and the eventual audio.play() call for
-    // languages that need the backend, and that delay is exactly what can
-    // cause Chrome to silently block playback as "no longer triggered by
-    // a user gesture" (see _speakViaBackend).
-    if (_availableVoices.isEmpty) {
-      await _loadAvailableVoices();
-    }
-    final useBackend = _selectedLanguage != 'English' && !_hasMatchingDeviceVoice(_selectedLanguage);
 
     setState(() {
       _activeSpeechKey = rawText;
@@ -519,38 +506,33 @@ class _HomePageState extends State<HomePage> {
       _isPaused = false;
     });
 
-    if (useBackend) {
-      try {
-        await _speakViaBackend(text, _selectedLanguage);
-        return;
-      } catch (e) {
-        // Fall through to give device TTS one chance, but make sure this
-        // is actually visible instead of failing in total silence like
-        // before — that silence was the entire reason this looked like
-        // it "only works for English and Hindi".
-        _showError('Cloud voice failed for $_selectedLanguage: $e');
-      }
+    // Always try the backend (Sarvam AI) first for every language.
+    // Previously this only happened for non-English languages without a
+    // device voice -- but flutter_tts on web doesn't actually block
+    // properly (awaitSpeakCompletion is unreliable on Chrome), so when
+    // the device path ran first and Sarvam audio arrived shortly after,
+    // both played simultaneously and collided. Routing everything through
+    // the backend eliminates that race entirely.
+    try {
+      await _speakViaBackend(text, _selectedLanguage);
+      return;
+    } catch (e) {
+      // Backend failed (network, Sarvam down, etc.) -- fall back to the
+      // local device voice so the user gets *something* rather than silence.
+      // This is a genuine fallback, not a parallel path, so no collision.
+      debugPrint('Backend TTS failed, falling back to device voice: $e');
     }
 
+    // Last resort: device voice (flutter_tts / Edge TTS).
+    // Only reached if the backend call above threw. Stop the backend
+    // audio path explicitly before starting device TTS.
+    await _tts.stop();
     await _applyVoiceForLanguage(_selectedLanguage);
     try {
       await _tts.speak(text).timeout(const Duration(seconds: 90));
-      // setCompletionHandler (registered in _initTts) already clears
-      // _isSpeaking/_isPaused/_activeSpeechKey on normal completion. This
-      // covers the timeout case, where that handler never fires because
-      // nothing actually completed.
-      if (mounted && _activeSpeechKey == rawText) {
-        setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
-      }
-    } catch (e) {
-      if (_selectedLanguage != 'English') {
-        try {
-          await _speakViaBackend(text, _selectedLanguage);
-          return;
-        } catch (e2) {
-          _showError('Could not play audio for $_selectedLanguage: $e2');
-        }
-      }
+    } catch (_) {
+      // Nothing more to try.
+    } finally {
       if (mounted && _activeSpeechKey == rawText) {
         setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
       }
