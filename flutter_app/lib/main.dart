@@ -577,7 +577,7 @@ class _HomePageState extends State<HomePage> {
   // sentences. 350 chars gives roughly 2-3 sentences per chunk which
   // Sarvam can synthesize in ~0.5-1 second.
   // Splits text into chunks optimised for low-latency progressive playback.
-  // The FIRST chunk is tiny (≤80 chars, ~1 sentence) so it arrives from
+  // The FIRST chunk is tiny (≤50 chars, ~1 short sentence) so it arrives from
   // Sarvam in ~1-2 seconds. Subsequent chunks are larger (≤300 chars) for
   // efficiency. Both sizes prefer sentence boundaries over hard cuts.
   List<String> _splitIntoSpeechChunks(String text) {
@@ -586,7 +586,7 @@ class _HomePageState extends State<HomePage> {
 
     final result = <String>[];
     // First chunk: very short for fast first-audio latency
-    final first = _cutChunk(text, 80);
+    final first = _cutChunk(text, 50);
     result.add(first);
     text = text.substring(first.length).trim();
 
@@ -660,32 +660,39 @@ class _HomePageState extends State<HomePage> {
     return completer.future;
   }
 
-  // Backend TTS with pipeline playback:
-  // - Tiny first chunk (≤80 chars) starts playing in ~1-2s
-  // - While chunk N plays, chunk N+1 is already being fetched in the
-  //   background, so there is no gap between sentences
+  // Backend TTS with fully parallel chunk fetching.
+  // ALL chunks are fetched from Sarvam simultaneously the moment the
+  // button is tapped. Chunk 0 (50 chars, ~1 short sentence) is tiny so
+  // it arrives from Sarvam in ~1-2 seconds and starts playing immediately.
+  // Chunks 1-N arrive during that playback -- when chunk 0 ends, chunk 1
+  // is already in memory and starts instantly with zero gap.
   Future<void> _speakViaBackend(String text, String language, {String? speechKey}) async {
     final langCode = _languageCodeFor(language);
     final key = speechKey ?? text;
     final chunks = _splitIntoSpeechChunks(text);
     if (chunks.isEmpty) return;
 
-    // Kick off the first fetch immediately (before any await/setState)
-    // to minimise the gap between button tap and first audio.
-    Future<Uint8List>? nextFetch = _fetchChunkAudio(chunks[0], langCode);
+    // Launch ALL fetches in parallel immediately. Don't await anything yet --
+    // just fire every request at once so Sarvam can work on all of them
+    // simultaneously while we await them in order below.
+    final futures = chunks.map((c) => _fetchChunkAudio(c, langCode)).toList();
 
     for (var i = 0; i < chunks.length; i++) {
-      if (_activeSpeechKey != key || !_isSpeaking) return;
+      if (_activeSpeechKey != key || !_isSpeaking) {
+        // User stopped -- cancel remaining fetches by letting them complete
+        // and discarding the result (HTTP doesn't have cancellation in Dart)
+        return;
+      }
 
-      // Await the fetch we already started for this chunk
-      final bytes = await nextFetch!;
-
-      // Pre-fetch the NEXT chunk immediately -- it will load in the
-      // background while the current chunk is playing, eliminating the
-      // gap between sentences.
-      nextFetch = (i + 1 < chunks.length)
-          ? _fetchChunkAudio(chunks[i + 1], langCode)
-          : null;
+      // Await this chunk's fetch (may already be done if Sarvam was fast)
+      final Uint8List bytes;
+      try {
+        bytes = await futures[i];
+      } catch (e) {
+        // One chunk failed -- stop rather than playing corrupted audio
+        debugPrint('[tts] chunk $i fetch failed: $e');
+        break;
+      }
 
       if (_activeSpeechKey != key || !_isSpeaking) return;
 
