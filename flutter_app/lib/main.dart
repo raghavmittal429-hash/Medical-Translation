@@ -515,7 +515,7 @@ class _HomePageState extends State<HomePage> {
     // both played simultaneously and collided. Routing everything through
     // the backend eliminates that race entirely.
     try {
-      await _speakViaBackend(text, _selectedLanguage);
+      await _speakViaBackend(text, _selectedLanguage, speechKey: rawText);
       return;
     } catch (e) {
       // Backend failed (network, Sarvam down, etc.) -- fall back to the
@@ -656,31 +656,29 @@ class _HomePageState extends State<HomePage> {
   // Splits text into ~350-char sentence chunks, fetches and plays each one
   // sequentially. The first chunk (~2-3 sentences) arrives in ~0.5-1s so
   // audio starts almost immediately instead of waiting for the full text.
-  Future<void> _speakViaBackend(String text, String language) async {
+  Future<void> _speakViaBackend(String text, String language, {String? speechKey}) async {
     final langCode = _languageCodeFor(language);
+    // Use the caller-supplied key (rawText) for active-speech guards.
+    // If we used `text` (sanitized) here but _activeSpeechKey was set to
+    // rawText in _speak(), they'd never match and every guard would exit
+    // immediately, producing total silence with no error.
+    final key = speechKey ?? text;
     final chunks = _splitIntoSpeechChunks(text);
     if (chunks.isEmpty) return;
 
-    final speechKey = text; // used to detect if _speak was called again
-
     for (var i = 0; i < chunks.length; i++) {
-      // Check if the user stopped or tapped a different card
-      if (_activeSpeechKey != speechKey || !_isSpeaking) return;
+      if (_activeSpeechKey != key || !_isSpeaking) return;
 
       final bytes = await _fetchChunkAudio(chunks[i], langCode);
 
-      // Still active after the fetch?
-      if (_activeSpeechKey != speechKey || !_isSpeaking) return;
+      if (_activeSpeechKey != key || !_isSpeaking) return;
 
-      final completed = await _playAudioBytes(bytes, speechKey);
+      final completed = await _playAudioBytes(bytes, key);
 
-      // If the audio ended naturally, loop continues to the next chunk.
-      // If it was interrupted (stop/pause tap), exit.
-      if (!completed || _activeSpeechKey != speechKey || !_isSpeaking) return;
+      if (!completed || _activeSpeechKey != key || !_isSpeaking) return;
     }
 
-    // All chunks played — clean up state
-    if (mounted && _activeSpeechKey == speechKey) {
+    if (mounted && _activeSpeechKey == key) {
       setState(() {
         _isSpeaking = false;
         _isPaused = false;
