@@ -576,35 +576,43 @@ class _HomePageState extends State<HomePage> {
   // Smaller chunks = faster first-audio, at the cost of a tiny gap between
   // sentences. 350 chars gives roughly 2-3 sentences per chunk which
   // Sarvam can synthesize in ~0.5-1 second.
-  List<String> _splitIntoSpeechChunks(String text, {int maxLen = 350}) {
+  // Splits text into chunks optimised for low-latency progressive playback.
+  // The FIRST chunk is tiny (≤80 chars, ~1 sentence) so it arrives from
+  // Sarvam in ~1-2 seconds. Subsequent chunks are larger (≤300 chars) for
+  // efficiency. Both sizes prefer sentence boundaries over hard cuts.
+  List<String> _splitIntoSpeechChunks(String text) {
     text = text.trim();
     if (text.isEmpty) return [];
-    if (text.length <= maxLen) return [text];
 
-    final chunks = <String>[];
+    final result = <String>[];
+    // First chunk: very short for fast first-audio latency
+    final first = _cutChunk(text, 80);
+    result.add(first);
+    text = text.substring(first.length).trim();
+
+    // Remaining chunks: larger for efficiency
     while (text.isNotEmpty) {
-      if (text.length <= maxLen) {
-        chunks.add(text);
-        break;
-      }
-      final slice = text.substring(0, maxLen);
-      // Prefer breaking at a sentence boundary
-      var cut = [
-        slice.lastIndexOf('. '),
-        slice.lastIndexOf('। '), // Devanagari full stop
-        slice.lastIndexOf('? '),
-        slice.lastIndexOf('! '),
-        slice.lastIndexOf('\n'),
-        slice.lastIndexOf(', '),
-      ].where((i) => i > 50).fold(-1, (best, i) => i > best ? i : best);
-
-      if (cut < 0) cut = maxLen;
-      else cut += 1;
-
-      chunks.add(text.substring(0, cut).trim());
-      text = text.substring(cut).trim();
+      final chunk = _cutChunk(text, 300);
+      result.add(chunk);
+      text = text.substring(chunk.length).trim();
     }
-    return chunks.where((c) => c.isNotEmpty).toList();
+    return result.where((c) => c.isNotEmpty).toList();
+  }
+
+  // Returns the longest prefix of [text] up to [maxLen] that ends at a
+  // sentence boundary. Falls back to a hard cut if no boundary is found.
+  String _cutChunk(String text, int maxLen) {
+    if (text.length <= maxLen) return text;
+    final slice = text.substring(0, maxLen);
+    final cut = [
+      slice.lastIndexOf('. '),
+      slice.lastIndexOf('। '),
+      slice.lastIndexOf('? '),
+      slice.lastIndexOf('! '),
+      slice.lastIndexOf('\n'),
+      slice.lastIndexOf(', '),
+    ].where((i) => i > 20).fold(-1, (best, i) => i > best ? i : best);
+    return cut < 0 ? slice : text.substring(0, cut + 1);
   }
 
   // Fetches audio for a single text chunk from the backend.
@@ -652,24 +660,32 @@ class _HomePageState extends State<HomePage> {
     return completer.future;
   }
 
-  // Backend TTS with progressive chunk playback.
-  // Splits text into ~350-char sentence chunks, fetches and plays each one
-  // sequentially. The first chunk (~2-3 sentences) arrives in ~0.5-1s so
-  // audio starts almost immediately instead of waiting for the full text.
+  // Backend TTS with pipeline playback:
+  // - Tiny first chunk (≤80 chars) starts playing in ~1-2s
+  // - While chunk N plays, chunk N+1 is already being fetched in the
+  //   background, so there is no gap between sentences
   Future<void> _speakViaBackend(String text, String language, {String? speechKey}) async {
     final langCode = _languageCodeFor(language);
-    // Use the caller-supplied key (rawText) for active-speech guards.
-    // If we used `text` (sanitized) here but _activeSpeechKey was set to
-    // rawText in _speak(), they'd never match and every guard would exit
-    // immediately, producing total silence with no error.
     final key = speechKey ?? text;
     final chunks = _splitIntoSpeechChunks(text);
     if (chunks.isEmpty) return;
 
+    // Kick off the first fetch immediately (before any await/setState)
+    // to minimise the gap between button tap and first audio.
+    Future<Uint8List>? nextFetch = _fetchChunkAudio(chunks[0], langCode);
+
     for (var i = 0; i < chunks.length; i++) {
       if (_activeSpeechKey != key || !_isSpeaking) return;
 
-      final bytes = await _fetchChunkAudio(chunks[i], langCode);
+      // Await the fetch we already started for this chunk
+      final bytes = await nextFetch!;
+
+      // Pre-fetch the NEXT chunk immediately -- it will load in the
+      // background while the current chunk is playing, eliminating the
+      // gap between sentences.
+      nextFetch = (i + 1 < chunks.length)
+          ? _fetchChunkAudio(chunks[i + 1], langCode)
+          : null;
 
       if (_activeSpeechKey != key || !_isSpeaking) return;
 
