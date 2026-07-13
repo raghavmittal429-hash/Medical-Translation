@@ -120,7 +120,7 @@ def synthesize(text: str, language_code: str = "en") -> bytes:
                 pace=1.0,
                 speech_sample_rate=22050,
                 enable_preprocessing=True,
-                output_audio_codec="mp3",
+                output_audio_codec="wav",
             )
             # response.audios is a list of base64-encoded audio strings.
             # Each call with a single `text` returns exactly one audio item.

@@ -51,9 +51,13 @@ class _HomePageState extends State<HomePage> {
   String? _activeSpeechKey;
   bool _isSpeaking = false;
   bool _isPaused = false;
-  // Only set while audio is playing via the backend (gTTS) path -- null
-  // means the device voice (flutter_tts) path is active, if any.
-  html.AudioElement? _currentAudio;
+  bool _audioUnlocked = false;
+  // Web Audio API context -- unlocked once on first button tap and stays
+  // unlocked for the entire session. This is the correct way to play audio
+  // after async gaps (Sarvam fetch takes 1-5s, which expires Chrome's
+  // HTMLAudioElement autoplay user-gesture context, causing silent failures).
+  html.AudioContext? _audioContext;
+  html.AudioBufferSourceNode? _currentSource;
 
   // Data state
   Map<String, dynamic>? _reportData;
@@ -493,12 +497,40 @@ class _HomePageState extends State<HomePage> {
     return text.trim();
   }
 
+  // Creates and unlocks the Web Audio API context synchronously within a
+  // user gesture handler. Called at the very top of _speak() before any
+  // await. Once the AudioContext is in "running" state it stays running
+  // for the whole page session -- audio decoded and played through it
+  // never needs another user gesture, even after a 5-second async fetch.
+  void _ensureAudioContextUnlocked() {
+    if (_audioContext != null) return;
+    try {
+      _audioContext = html.AudioContext();
+      // Play a 1-sample silent buffer immediately to transition the context
+      // from "suspended" to "running" within the synchronous gesture handler.
+      final buf = _audioContext!.createBuffer(1, 1, 22050.0);
+      final src = _audioContext!.createBufferSource();
+      src.buffer = buf;
+      src.connectNode(_audioContext!.destination!);
+      src.start(0);
+    } catch (_) {
+      // AudioContext unavailable -- _playAudioBytes will fall back to
+      // HTMLAudioElement which may or may not work depending on the browser.
+      _audioContext = null;
+    }
+  }
+
   Future<void> _speak(String rawText) async {
     final text = _sanitizeForSpeech(rawText);
     if (text.isEmpty || !_ttsEnabled) return;
 
+    // Unlock the Web Audio API context SYNCHRONOUSLY before any await.
+    // This must happen in the same call stack as the button tap so Chrome
+    // considers it a genuine user gesture. After this point, audio can
+    // play even after a 5-second async Sarvam fetch.
+    _ensureAudioContextUnlocked();
+
     // Stop everything currently playing BEFORE starting anything new.
-    // This must happen synchronously before any async work below.
     await _stopSpeaking();
 
     setState(() {
@@ -508,25 +540,14 @@ class _HomePageState extends State<HomePage> {
     });
 
     // Always try the backend (Sarvam AI) first for every language.
-    // Previously this only happened for non-English languages without a
-    // device voice -- but flutter_tts on web doesn't actually block
-    // properly (awaitSpeakCompletion is unreliable on Chrome), so when
-    // the device path ran first and Sarvam audio arrived shortly after,
-    // both played simultaneously and collided. Routing everything through
-    // the backend eliminates that race entirely.
     try {
       await _speakViaBackend(text, _selectedLanguage, speechKey: rawText);
       return;
     } catch (e) {
-      // Backend failed (network, Sarvam down, etc.) -- fall back to the
-      // local device voice so the user gets *something* rather than silence.
-      // This is a genuine fallback, not a parallel path, so no collision.
       debugPrint('Backend TTS failed, falling back to device voice: $e');
     }
 
     // Last resort: device voice (flutter_tts / Edge TTS).
-    // Only reached if the backend call above threw. Stop the backend
-    // audio path explicitly before starting device TTS.
     await _tts.stop();
     await _applyVoiceForLanguage(_selectedLanguage);
     try {
@@ -541,31 +562,34 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _pauseSpeaking() async {
-    if (_currentAudio != null) {
-      _currentAudio!.pause(); // fires the onPause listener below, which updates state
+    // AudioContext path: suspend the context (pauses all audio)
+    if (_audioContext != null && _audioContext!.state == 'running') {
+      await _audioContext!.suspend();
+      if (mounted) setState(() { _isSpeaking = false; _isPaused = true; });
     } else {
-      await _tts.pause(); // fires setPauseHandler via the browser's speechSynthesis.pause()
+      // flutter_tts fallback path
+      await _tts.pause();
     }
   }
 
   Future<void> _resumeSpeaking() async {
-    if (_currentAudio != null) {
-      try {
-        await _currentAudio!.play();
-      } catch (e) {
-        _showError('Could not resume playback: $e');
-      }
+    if (_audioContext != null && _audioContext!.state == 'suspended') {
+      await _audioContext!.resume();
+      if (mounted) setState(() { _isSpeaking = true; _isPaused = false; });
     } else {
       await _tts.resume();
     }
   }
 
   Future<void> _stopSpeaking() async {
-    if (_currentAudio != null) {
-      _currentAudio!.pause();
-      _currentAudio!.currentTime = 0;
-      _currentAudio = null;
+    // Stop AudioContext source
+    try { _currentSource?.stop(); } catch (_) {}
+    _currentSource = null;
+    // Resume context so it's ready for next play (stop ≠ suspend)
+    if (_audioContext != null && _audioContext!.state == 'suspended') {
+      try { await _audioContext!.resume(); } catch (_) {}
     }
+    // Stop flutter_tts fallback too
     await _tts.stop();
     if (mounted) {
       setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
@@ -630,16 +654,54 @@ class _HomePageState extends State<HomePage> {
     return response.bodyBytes;
   }
 
-  // Plays a single audio blob and waits for it to finish.
-  // Returns false if playback was stopped/interrupted before completion.
+  // Plays audio bytes and waits until playback finishes.
+  // Uses Web Audio API (AudioContext) as primary path -- this works
+  // regardless of how long ago the user tapped the button, because the
+  // AudioContext was unlocked synchronously in _speak() and stays running.
+  // Falls back to HTMLAudioElement if AudioContext is unavailable.
   Future<bool> _playAudioBytes(Uint8List bytes, String speechKey) async {
+    if (_audioContext != null) {
+      return _playViAudioContext(bytes);
+    }
+    return _playViaAudioElement(bytes);
+  }
+
+  Future<bool> _playViAudioContext(Uint8List bytes) async {
+    try {
+      // Resume context if the browser suspended it during inactivity
+      if (_audioContext!.state == 'suspended') {
+        await _audioContext!.resume();
+      }
+
+      // Decode the MP3 bytes into a PCM AudioBuffer
+      final audioBuffer = await _audioContext!.decodeAudioData(bytes.buffer);
+
+      final source = _audioContext!.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connectNode(_audioContext!.destination!);
+      _currentSource = source;
+
+      final completer = Completer<bool>();
+      source.onEnded.listen((_) {
+        _currentSource = null;
+        if (!completer.isCompleted) completer.complete(true);
+      });
+
+      source.start(0);
+      return completer.future;
+    } catch (e) {
+      _currentSource = null;
+      debugPrint('[audio] AudioContext playback failed: $e, trying AudioElement');
+      return _playViaAudioElement(bytes);
+    }
+  }
+
+  Future<bool> _playViaAudioElement(Uint8List bytes) async {
     final blob = html.Blob([bytes], 'audio/mpeg');
     final audioUrl = html.Url.createObjectUrlFromBlob(blob);
     final audio = html.AudioElement(audioUrl);
-    _currentAudio = audio;
 
     final completer = Completer<bool>();
-
     audio.onEnded.listen((_) {
       html.Url.revokeObjectUrl(audioUrl);
       if (!completer.isCompleted) completer.complete(true);
@@ -653,8 +715,7 @@ class _HomePageState extends State<HomePage> {
       await audio.play();
     } catch (e) {
       html.Url.revokeObjectUrl(audioUrl);
-      _currentAudio = null;
-      throw Exception('Audio playback blocked by browser: $e. Tap again.');
+      throw Exception('Audio blocked by browser: $e. Tap again.');
     }
 
     return completer.future;
@@ -706,7 +767,6 @@ class _HomePageState extends State<HomePage> {
         _isSpeaking = false;
         _isPaused = false;
         _activeSpeechKey = null;
-        _currentAudio = null;
       });
     }
   }
@@ -3182,7 +3242,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _tts.stop();
-    _currentAudio?.pause();
+    try { _currentSource?.stop(); } catch (_) {}
+    try { _audioContext?.close(); } catch (_) {}
     _pollingTimer?.cancel();
     super.dispose();
   }
