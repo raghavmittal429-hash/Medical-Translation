@@ -11,3 +11,4 @@ langsmith
 gtts
 edge-tts
 sarvamai
+elevenlabs

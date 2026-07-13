@@ -13,6 +13,7 @@ from gtts import gTTS
 import io
 import edge_tts_voices
 import sarvam_tts
+import elevenlabs_tts
 import shutil
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -469,10 +470,11 @@ async def retranslate_report(request: Request):
 
 # ============== TTS Endpoint ==============
 async def synthesize_speech(request: Request):
-    """Generate speech audio using a three-tier fallback chain:
-    1. Sarvam AI Bulbul v3 (best for Indian languages, needs SARVAM_API_KEY)
-    2. Microsoft Edge TTS neural voices (free, no key needed)
-    3. gTTS / Google Translate TTS (free, always available)
+    """Generate speech audio using a four-tier fallback chain:
+    1. ElevenLabs Multilingual v2 (needs ELEVENLABS_API_KEY, 10k chars free/month)
+    2. Sarvam AI Bulbul v3 (needs SARVAM_API_KEY, best for Indian languages)
+    3. Microsoft Edge TTS neural voices (free, no key needed)
+    4. gTTS / Google Translate TTS (free, always available)
     The first tier that succeeds is used; failures are logged and skipped."""
     try:
         body = await request.json()
@@ -498,22 +500,31 @@ async def synthesize_speech(request: Request):
             "urdu": "ur", "ur": "ur",
         }
         lang_code = lang_map.get(language, "hi")
-
         audio_content = None
 
-        # ── Tier 1: Sarvam AI Bulbul v3 ─────────────────────────────
-        # Purpose-built for Indian languages from scratch -- not adapted
-        # from English/Western models. Best phoneme accuracy for all 9
-        # Indian languages this app supports.
+        # ── Tier 1: ElevenLabs Multilingual v2 ──────────────────────
+        # Dynamically picks the best voice from the user's account so
+        # free-tier premade voices are used automatically (no more
+        # 402 "library voice" errors from hardcoded IDs).
         try:
-            audio_content = sarvam_tts.synthesize(text, lang_code)
-            print(f"[synthesize] Sarvam AI OK for lang={lang_code}")
-        except sarvam_tts.SarvamConfigError:
-            print(f"[synthesize] Sarvam AI not configured (no SARVAM_API_KEY), trying Edge TTS")
-        except sarvam_tts.SarvamTtsError as e:
-            print(f"[synthesize] Sarvam AI failed ({e}), trying Edge TTS")
+            audio_content = elevenlabs_tts.synthesize(text, lang_code)
+            print(f"[synthesize] ElevenLabs OK for lang={lang_code}")
+        except elevenlabs_tts.ElevenLabsConfigError:
+            print(f"[synthesize] ElevenLabs not configured, trying Sarvam")
+        except elevenlabs_tts.ElevenLabsTtsError as e:
+            print(f"[synthesize] ElevenLabs failed ({e}), trying Sarvam")
 
-        # ── Tier 2: Microsoft Edge TTS neural voices ─────────────────
+        # ── Tier 2: Sarvam AI Bulbul v3 ─────────────────────────────
+        if audio_content is None:
+            try:
+                audio_content = sarvam_tts.synthesize(text, lang_code)
+                print(f"[synthesize] Sarvam AI OK for lang={lang_code}")
+            except sarvam_tts.SarvamConfigError:
+                print(f"[synthesize] Sarvam not configured, trying Edge TTS")
+            except sarvam_tts.SarvamTtsError as e:
+                print(f"[synthesize] Sarvam failed ({e}), trying Edge TTS")
+
+        # ── Tier 3: Microsoft Edge TTS neural voices ─────────────────
         if audio_content is None:
             try:
                 audio_content = await edge_tts_voices.synthesize(text, lang_code)
@@ -521,7 +532,7 @@ async def synthesize_speech(request: Request):
             except Exception as e:
                 print(f"[synthesize] Edge TTS failed ({e}), falling back to gTTS")
 
-        # ── Tier 3: gTTS (always available) ─────────────────────────
+        # ── Tier 4: gTTS (always available) ─────────────────────────
         if audio_content is None:
             tts = gTTS(text=text, lang=lang_code, slow=False)
             audio_bytes = io.BytesIO()

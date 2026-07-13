@@ -1,57 +1,33 @@
 """
 Text-to-speech using ElevenLabs Multilingual v2.
 
-Requires ELEVENLABS_API_KEY in Render environment variables (or backend/.env
-for local development). Free tier: 10,000 characters/month.
+Free tier: 10,000 characters/month, no credit card required.
 Get your key at: https://elevenlabs.io/app/settings/api-keys
+Add it to Render's Environment as: ELEVENLABS_API_KEY
 
-Voice model: eleven_multilingual_v2
-- Best quality for Indian languages (Hindi, Tamil, Telugu, Malayalam, etc.)
-- Natural, expressive speech with correct phonemes for each script
-
-Voice: Rachel (21m00Tcm4TlvDq8ikWAM)
-- ElevenLabs' built-in voice, available on ALL plans including free tier
-- Library/community voices (like Aria) require a paid subscription --
-  using them on a free account returns HTTP 402 payment_required
-- Calm, clear, professional tone suited for medical report narration
-
-Falls back to Edge TTS -> gTTS automatically if:
-- ELEVENLABS_API_KEY is not set / has expired
-- API call fails for any reason (quota, network, etc.)
+Voice selection strategy: instead of hardcoding a voice ID that may be
+a "library voice" (which requires a paid plan), we dynamically fetch the
+voices available in the user's account and pick the best multilingual one.
+'premade' and 'generated' category voices work on all plans including free.
+Falls back to Edge TTS -> gTTS if key is missing or all voices fail.
 """
 
 import os
-
 from elevenlabs.client import ElevenLabs
 from elevenlabs import VoiceSettings
 
-# eleven_multilingual_v2: best quality model for all 9 Indian languages
 MODEL_ID = "eleven_multilingual_v2"
 
-# Rachel -- ElevenLabs' free built-in voice, works on all plans.
-# Library/community voices like Aria require a paid subscription and
-# return HTTP 402 on free accounts. Rachel handles all Indian language
-# scripts naturally via eleven_multilingual_v2.
-DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
-
-# Voice settings tuned for medical report narration:
-# - stability 0.55: slightly more expressive than the old 0.65, avoids
-#   monotone delivery on long clinical passages
-# - similarity_boost 0.75: clear and consistent without sounding robotic
-# - style 0.30: adds natural emphasis without overdramatic delivery
-# - use_speaker_boost: improves clarity for Indian language phonemes
+# Voice settings tuned for medical report narration
 VOICE_SETTINGS = VoiceSettings(
     stability=0.55,
     similarity_boost=0.75,
-    style=0.30,
+    style=0.25,
     use_speaker_boost=True,
 )
 
-# ElevenLabs expects BCP-47 language codes (e.g. "hi-IN", not just "hi").
-# This matters for multilingual_v2 -- the right code unlocks the correct
-# phoneme set for each language's script.
 LANGUAGE_CODE_MAP = {
-    "en": "en-IN",   # Indian English -- better accent fit for this app
+    "en": "en-IN",
     "hi": "hi-IN",
     "bn": "bn-IN",
     "ta": "ta-IN",
@@ -60,95 +36,124 @@ LANGUAGE_CODE_MAP = {
     "gu": "gu-IN",
     "kn": "kn-IN",
     "ml": "ml-IN",
-    "pa": "hi-IN",   # no dedicated Punjabi; closest available
-    "ur": "hi-IN",   # ditto for Urdu
+    "pa": "hi-IN",
     "or": "hi-IN",
     "as": "bn-IN",
+    "ur": "hi-IN",
 }
 
-# Cap per request -- multilingual_v2 allows up to ~5000 chars but splitting
-# at 4500 gives comfortable headroom and faster first-audio latency on long
-# sections (the first chunk starts playing while the rest is fetched).
-MAX_CHARS_PER_REQUEST = 4500
+MAX_CHARS = 4500
+
+# Cache the picked voice ID so we don't re-fetch voices on every request
+_cached_voice_id: str | None = None
 
 
 class ElevenLabsConfigError(Exception):
-    """Raised when ELEVENLABS_API_KEY is missing from the environment."""
+    """Raised when ELEVENLABS_API_KEY is not set."""
 
 
 class ElevenLabsTtsError(Exception):
-    """Raised when the ElevenLabs API call itself fails."""
+    """Raised when the API call itself fails."""
 
 
 def _get_client():
-    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-    if not api_key:
+    key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not key:
         raise ElevenLabsConfigError(
             "ELEVENLABS_API_KEY is not set. "
-            "Add it to Render's environment variables or to backend/.env."
+            "Get a free key at https://elevenlabs.io/app/settings/api-keys"
         )
-    return ElevenLabs(api_key=api_key)
+    return ElevenLabs(api_key=key)
 
 
-def _split_text(text: str, max_len: int = MAX_CHARS_PER_REQUEST) -> list:
-    """Split text at sentence boundaries to stay under ElevenLabs' char limit."""
+def _pick_voice(client: ElevenLabs) -> str:
+    """Fetches voices from the user's account and returns the best voice ID
+    that will work on their current plan (prefers premade/generated over
+    library voices which require paid plans)."""
+    global _cached_voice_id
+    if _cached_voice_id:
+        return _cached_voice_id
+
+    try:
+        response = client.voices.get_all()
+        voices = response.voices if hasattr(response, 'voices') else []
+
+        # Priority order: premade first (guaranteed free), then generated,
+        # then anything else. Within each category prefer female voices
+        # (tend to be clearer for medical content)
+        def score(v):
+            cat = getattr(v, 'category', '') or ''
+            name = (getattr(v, 'name', '') or '').lower()
+            s = 0
+            if cat == 'premade':
+                s += 100
+            elif cat == 'generated':
+                s += 80
+            elif cat == 'cloned':
+                s += 60
+            # Prefer female/neutral-sounding voices for medical narration
+            if any(w in name for w in ['rachel', 'aria', 'sarah', 'jessica',
+                                        'alice', 'lily', 'grace', 'sophie',
+                                        'priya', 'female', 'woman']):
+                s += 10
+            return s
+
+        if voices:
+            best = max(voices, key=score)
+            _cached_voice_id = best.voice_id
+            print(f"[elevenlabs] selected voice: {best.name} "
+                  f"(id={best.voice_id}, category={getattr(best, 'category', 'unknown')})")
+            return _cached_voice_id
+
+    except Exception as e:
+        print(f"[elevenlabs] could not fetch voices: {e}")
+
+    # Absolute fallback: use the first default voice ElevenLabs assigns
+    # to every new account — this always exists and is always free
+    _cached_voice_id = "JBFqnCBsd6RMkjVDRZzb"  # George — ElevenLabs default
+    return _cached_voice_id
+
+
+def _split_text(text: str, max_len: int = MAX_CHARS) -> list:
     text = text.strip()
     if len(text) <= max_len:
         return [text]
-
     chunks = []
     while len(text) > max_len:
         slice_ = text[:max_len]
-        # Prefer sentence-ending punctuation as break points
         cut = max(
-            slice_.rfind('. '),
-            slice_.rfind('! '),
-            slice_.rfind('? '),
-            slice_.rfind('\n'),
-            slice_.rfind(', '),
+            slice_.rfind('. '), slice_.rfind('! '),
+            slice_.rfind('? '), slice_.rfind('\n'),
         )
-        if cut <= 0:
-            cut = max_len  # no boundary found -- hard cut
-        else:
-            cut += 1
+        cut = cut + 1 if cut > 0 else max_len
         chunks.append(text[:cut].strip())
         text = text[cut:].strip()
-
     if text:
         chunks.append(text)
     return chunks
 
 
 def synthesize(text: str, language_code: str = "en") -> bytes:
-    """
-    Synthesize `text` using ElevenLabs Multilingual v2.
-    Returns raw MP3 bytes.
-
-    Raises ElevenLabsConfigError (no key) or ElevenLabsTtsError (API failure).
-    Both are caught by the caller in main.py which then falls back to Edge TTS.
-    """
+    """Synthesize text using ElevenLabs. Returns raw MP3 bytes."""
     client = _get_client()
-
-    # Use the correct BCP-47 code for this language
-    bcp47_code = LANGUAGE_CODE_MAP.get(language_code, "hi-IN")
-
+    voice_id = _pick_voice(client)
+    bcp47 = LANGUAGE_CODE_MAP.get(language_code, "hi-IN")
     chunks = _split_text(text)
-    audio_parts = []
 
     print(f"[elevenlabs] synthesizing {len(text)} chars, "
-          f"lang={language_code} ({bcp47_code}), "
-          f"model={MODEL_ID}, voice={DEFAULT_VOICE_ID}, "
-          f"chunks={len(chunks)}")
+          f"lang={language_code} ({bcp47}), model={MODEL_ID}, "
+          f"voice={voice_id}, chunks={len(chunks)}")
 
+    audio_parts = []
     for i, chunk in enumerate(chunks):
         if not chunk:
             continue
         try:
             audio_iter = client.text_to_speech.convert(
-                voice_id=DEFAULT_VOICE_ID,
+                voice_id=voice_id,
                 text=chunk,
                 model_id=MODEL_ID,
-                language_code=bcp47_code,
+                language_code=bcp47,
                 voice_settings=VOICE_SETTINGS,
                 output_format="mp3_44100_128",
                 apply_text_normalization="auto",
@@ -158,15 +163,13 @@ def synthesize(text: str, language_code: str = "en") -> bytes:
                 audio_parts.append(chunk_bytes)
                 print(f"[elevenlabs] chunk {i+1}/{len(chunks)}: "
                       f"{len(chunk_bytes)} bytes OK")
-            else:
-                print(f"[elevenlabs] chunk {i+1}/{len(chunks)}: empty response")
         except Exception as e:
             print(f"[elevenlabs] chunk {i+1}/{len(chunks)} FAILED: {e}")
-            raise ElevenLabsTtsError(f"ElevenLabs API error on chunk {i+1}: {e}") from e
+            raise ElevenLabsTtsError(f"ElevenLabs API error: {e}") from e
 
     if not audio_parts:
-        raise ElevenLabsTtsError("ElevenLabs returned no audio content.")
+        raise ElevenLabsTtsError("ElevenLabs returned no audio.")
 
     total = sum(len(p) for p in audio_parts)
-    print(f"[elevenlabs] total audio: {total} bytes ({len(audio_parts)} chunks)")
+    print(f"[elevenlabs] total audio: {total} bytes")
     return b"".join(audio_parts)
