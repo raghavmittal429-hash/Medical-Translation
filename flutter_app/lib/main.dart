@@ -1645,9 +1645,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildResultOverview() {
-    final risk = ((_reportData!['risk_probability'] ?? 0) as num).toDouble();
-    final factors = _causalFactors();
-
     return Card(
       color: Colors.white,
       elevation: 2,
@@ -1657,57 +1654,28 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.green),
-                const SizedBox(width: 8),
-                const Expanded(
+                Icon(Icons.check_circle, color: Colors.green),
+                SizedBox(width: 8),
+                Expanded(
                   child: Text(
                     'Report Processed Successfully',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
-                _buildStatusPill(_riskLabel(risk), _riskColor(risk)),
               ],
-            ),
-            const SizedBox(height: 16),
-            LinearProgressIndicator(
-              value: risk.clamp(0, 1).toDouble(),
-              color: _riskColor(risk),
-              backgroundColor: Colors.grey.shade200,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(99),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Risk probability: ${(risk * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildInfoChip(Icons.analytics, '${factors.length} risk factors'),
                 _buildInfoChip(Icons.volume_up, 'Voice support'),
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildStatusPill(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
       ),
     );
   }
@@ -1727,45 +1695,6 @@ class _HomePageState extends State<HomePage> {
       return value.map((item) => item.toString()).where((item) => item.trim().isNotEmpty).toList();
     }
     return const [];
-  }
-
-  Map<String, dynamic> _causalAnalysis() {
-    final report = _reportData;
-    if (report == null) return {};
-    final value = report['causal_analysis'];
-    if (value is Map<String, dynamic>) return value;
-    if (value is String && value.trim().isNotEmpty) {
-      try {
-        final decoded = json.decode(value);
-        if (decoded is Map<String, dynamic>) return decoded;
-      } catch (_) {
-        return {};
-      }
-    }
-    return {};
-  }
-
-  List<Map<String, dynamic>> _causalFactors() {
-    final factors = _causalAnalysis()['causal_factors'];
-    if (factors is List) {
-      return factors
-          .whereType<Map>()
-          .map((item) => item.map((key, value) => MapEntry(key.toString(), value)))
-          .toList();
-    }
-    return const [];
-  }
-
-  Color _riskColor(double risk) {
-    if (risk < 0.35) return Colors.green;
-    if (risk < 0.75) return Colors.orange;
-    return Colors.red;
-  }
-
-  String _riskLabel(double risk) {
-    if (risk < 0.35) return 'Low';
-    if (risk < 0.75) return 'Medium';
-    return 'High';
   }
 
   Widget _buildExplainTab() {
