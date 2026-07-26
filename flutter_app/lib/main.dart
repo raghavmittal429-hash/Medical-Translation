@@ -1416,7 +1416,6 @@ class _HomePageState extends State<HomePage> {
               _buildUploadTab(),
               _buildExplainTab(),
               _buildSuggestionsTab(),
-              _buildTrendsTab(),
               _buildSettingsTab(),
             ],
           ),
@@ -1488,11 +1487,6 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.tips_and_updates_outlined, color: Colors.grey),
             selectedIcon: Icon(Icons.tips_and_updates, color: Color(0xFFA01A1A)),
             label: 'Suggestions',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.show_chart, color: Colors.grey),
-            selectedIcon: Icon(Icons.show_chart, color: Color(0xFFA01A1A)),
-            label: 'Trends',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined, color: Colors.grey),
