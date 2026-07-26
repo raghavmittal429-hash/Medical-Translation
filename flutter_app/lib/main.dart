@@ -1756,13 +1756,6 @@ class _HomePageState extends State<HomePage> {
     return const [];
   }
 
-  String _riskExplanation() {
-    final analysis = _causalAnalysis();
-    final explanation = analysis['causal_explanation']?.toString();
-    if (explanation != null && explanation.trim().isNotEmpty) return explanation;
-    return 'Upload a report to see why this risk level was calculated.';
-  }
-
   Color _riskColor(double risk) {
     if (risk < 0.35) return Colors.green;
     if (risk < 0.75) return Colors.orange;
