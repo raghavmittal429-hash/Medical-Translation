@@ -10,7 +10,6 @@ import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -42,22 +41,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   FlutterTts _tts = FlutterTts();
-
-  // Speech playback state. _activeSpeechKey stores the *raw* (un-
-  // sanitized) text passed to _speak(), so each section card's speak
-  // button can check "is this card the one currently playing?" by
-  // comparing against its own `content` string directly, without having
-  // to re-run sanitization just to compare.
-  String? _activeSpeechKey;
-  bool _isSpeaking = false;
-  bool _isPaused = false;
-  bool _audioUnlocked = false;
-  // Web Audio API context -- unlocked once on first button tap and stays
-  // unlocked for the entire session. This is the correct way to play audio
-  // after async gaps (Sarvam fetch takes 1-5s, which expires Chrome's
-  // HTMLAudioElement autoplay user-gesture context, causing silent failures).
-  html.AudioContext? _audioContext;
-  html.AudioBufferSourceNode? _currentSource;
 
   // Data state
   Map<String, dynamic>? _reportData;
@@ -97,26 +80,6 @@ class _HomePageState extends State<HomePage> {
     await _tts.setSpeechRate(0.45);
     await _tts.setPitch(1.0);
     await _tts.awaitSpeakCompletion(true);
-
-    // Keep _isSpeaking/_isPaused truthful for the device-voice path by
-    // reacting to the engine's own lifecycle events, instead of guessing
-    // from whether an awaited Future has returned yet.
-    _tts.setStartHandler(() {
-      if (mounted) setState(() { _isSpeaking = true; _isPaused = false; });
-    });
-    _tts.setCompletionHandler(() {
-      if (mounted) setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
-    });
-    _tts.setPauseHandler(() {
-      if (mounted) setState(() { _isSpeaking = false; _isPaused = true; });
-    });
-    _tts.setContinueHandler(() {
-      if (mounted) setState(() { _isSpeaking = true; _isPaused = false; });
-    });
-    _tts.setErrorHandler((dynamic msg) {
-      if (mounted) setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
-    });
-
     await _loadAvailableVoices();
     await _applyVoiceForLanguage(_selectedLanguage);
   }
@@ -147,28 +110,6 @@ class _HomePageState extends State<HomePage> {
   String _languageCodeOf(String locale) {
     final parts = locale.split(RegExp(r'[-_]'));
     return parts.isNotEmpty ? parts.first.toLowerCase() : locale.toLowerCase();
-  }
-
-  String _languageCodeFor(String language) {
-    for (final entry in _languages) {
-      if (entry['name'] == language) {
-        return entry['code'] ?? _languageCodeOf(_ttsLocalesFor(language).first);
-      }
-    }
-    return _languageCodeOf(_ttsLocalesFor(language).first);
-  }
-
-  bool _hasMatchingDeviceVoice(String language) {
-    if (_availableVoices.isEmpty) return false;
-
-    final targetLocales = _ttsLocalesFor(language);
-    final targetLangCode = _languageCodeOf(targetLocales.first);
-
-    return _availableVoices.any((voice) {
-      final voiceLocale = _voiceLocaleOf(voice).toLowerCase();
-      return targetLocales.map((e) => e.toLowerCase()).contains(voiceLocale) ||
-          _languageCodeOf(voiceLocale) == targetLangCode;
-    });
   }
 
   Future<void> _applyVoiceForLanguage(String language) async {
@@ -304,7 +245,7 @@ class _HomePageState extends State<HomePage> {
   // Falls back to localhost for local development
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://medical-translation-5.onrender.com',
+    defaultValue: 'https://medical-translation-3.onrender.com',
   );
 
   Uri _buildApiUrl(String path) {
@@ -429,345 +370,64 @@ class _HomePageState extends State<HomePage> {
   
   }
 
-  // Report text often carries markdown-style formatting (headings, bold
-  // markers, horizontal-rule separators like "======" or "------") that
-  // displays/reads fine as raw markdown but looks/sounds wrong once it's
-  // dropped into plain text -- "======" gets read aloud as "equal equal
-  // equal..." by TTS, and shows up literally as "======" in the PDF
-  // export. This is the shared cleanup used by both: it strips that kind
-  // of decoration while leaving normal punctuation (the single "-" in
-  // "13.0-17.0", "%", etc.) completely untouched, since those only
-  // trigger on 3+ repeats. Newlines are preserved here so callers that
-  // care about paragraph/line structure (the PDF builder) still can.
-  String _stripDecorativeSymbols(String input) {
-    var text = input;
-
-    // Markdown emphasis/code markers: keep the inner words, drop the
-    // symbols, e.g. "**important**" -> "important", "`eGFR`" -> "eGFR".
-    text = text.replaceAllMapped(RegExp(r'\*\*(.*?)\*\*'), (m) => m.group(1) ?? '');
-    text = text.replaceAllMapped(RegExp(r'__(.*?)__'), (m) => m.group(1) ?? '');
-    text = text.replaceAllMapped(RegExp(r'(?<!\*)\*([^*\n]+)\*(?!\*)'), (m) => m.group(1) ?? '');
-    text = text.replaceAllMapped(RegExp(r'`([^`]*)`'), (m) => m.group(1) ?? '');
-
-    // Markdown headings ("## Summary" -> "Summary") and bullet markers
-    // ("- item" / "* item" -> "item") at the start of a line.
-    text = text.replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '');
-    text = text.replaceAll(RegExp(r'^\s*[-*+]\s+', multiLine: true), '');
-    text = text.replaceAll(RegExp(r'^\s*>\s*', multiLine: true), '');
-
-    // Decorative separator lines/runs: any non-word, non-space character
-    // repeated 3+ times in a row ("======", "------", "******", "~~~~").
-    // \w already excludes most of these, but underscores count as word
-    // characters in regex, so handle "___" runs explicitly too.
-    text = text.replaceAll(RegExp(r'([^\w\s])\1{2,}'), ' ');
-    text = text.replaceAll(RegExp(r'_{3,}'), ' ');
-
-    // Leftover table pipes and stray backticks/asterisks/underscores that
-    // weren't part of a matched pair above.
-    text = text.replaceAll(RegExp(r'[|`*_#]'), ' ');
-
-    // Emoji and pictographic symbols (warning signs, checkmarks, arrows,
-    // etc.). Some TTS engines vocalize these literally by name -- a "⚠️"
-    // gets read aloud as "warning" -- which is meaningless and jarring in
-    // a medical report. Covers the common emoji/symbol Unicode blocks:
-    // Miscellaneous Symbols & Dingbats, Misc Symbols and Arrows, and the
-    // full modern emoji range (U+1F000-U+1FFFF), plus the variation
-    // selector and zero-width joiner used to combine emoji.
-    text = text.replaceAll(
-      RegExp(r'[\u2600-\u27BF\u2B00-\u2BFF\u{1F000}-\u{1FFFF}\uFE0E\uFE0F\u200D]', unicode: true),
-      ' ',
-    );
-
-    // Collapse runs of spaces/tabs the above left behind, but keep
-    // newlines intact for callers that rely on line/paragraph structure.
-    text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
-    text = text.replaceAll(RegExp(r'[ \t]*\n[ \t]*'), '\n');
-
-    return text.trim();
-  }
-
-  // TTS-specific wrapper: speech doesn't care about line breaks, only
-  // about natural pauses, so this additionally folds newlines into ". "
-  // after the shared symbol-stripping above.
-  String _sanitizeForSpeech(String input) {
-    var text = _stripDecorativeSymbols(input);
-    text = text.replaceAll(RegExp(r'\n\s*\n+'), '. ');
-    text = text.replaceAll('\n', '. ');
-    text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
-    return text.trim();
-  }
-
-  // Creates and unlocks the Web Audio API context synchronously within a
-  // user gesture handler. Called at the very top of _speak() before any
-  // await. Once the AudioContext is in "running" state it stays running
-  // for the whole page session -- audio decoded and played through it
-  // never needs another user gesture, even after a 5-second async fetch.
-  void _ensureAudioContextUnlocked() {
-    if (_audioContext != null) return;
-    try {
-      _audioContext = html.AudioContext();
-      // Play a 1-sample silent buffer immediately to transition the context
-      // from "suspended" to "running" within the synchronous gesture handler.
-      final buf = _audioContext!.createBuffer(1, 1, 22050.0);
-      final src = _audioContext!.createBufferSource();
-      src.buffer = buf;
-      src.connectNode(_audioContext!.destination!);
-      src.start(0);
-    } catch (_) {
-      // AudioContext unavailable -- _playAudioBytes will fall back to
-      // HTMLAudioElement which may or may not work depending on the browser.
-      _audioContext = null;
-    }
-  }
-
-  Future<void> _speak(String rawText) async {
-    final text = _sanitizeForSpeech(rawText);
+  Future<void> _speak(String text) async {
     if (text.isEmpty || !_ttsEnabled) return;
 
-    // Unlock the Web Audio API context SYNCHRONOUSLY before any await.
-    // This must happen in the same call stack as the button tap so Chrome
-    // considers it a genuine user gesture. After this point, audio can
-    // play even after a 5-second async Sarvam fetch.
-    _ensureAudioContextUnlocked();
-
-    // Stop everything currently playing BEFORE starting anything new.
-    await _stopSpeaking();
-
-    setState(() {
-      _activeSpeechKey = rawText;
-      _isSpeaking = true;
-      _isPaused = false;
-    });
-
-    // Always try the backend (Sarvam AI) first for every language.
-    try {
-      await _speakViaBackend(text, _selectedLanguage, speechKey: rawText);
-      return;
-    } catch (e) {
-      debugPrint('Backend TTS failed, falling back to device voice: $e');
-    }
-
-    // Last resort: device voice (flutter_tts / Edge TTS).
     await _tts.stop();
     await _applyVoiceForLanguage(_selectedLanguage);
     try {
+      // Try device TTS first
       await _tts.speak(text).timeout(const Duration(seconds: 90));
+    } catch (e) {
+      // Device TTS failed; fall back to backend TTS if available
+      if (_selectedLanguage != 'English') {
+        try {
+          await _speakViaBackend(text, _selectedLanguage);
+        } catch (_) {
+          // Silently fail if backend TTS also fails
+        }
+      }
+    }
+  }
+
+  // Fall back to backend TTS endpoint for languages without device voices
+  Future<void> _speakViaBackend(String text, String language) async {
+    try {
+      // Map language name to language code
+      final langCodes = {
+        'English': 'en',
+        'Hindi': 'hi',
+        'Bengali': 'bn',
+        'Tamil': 'ta',
+        'Telugu': 'te',
+        'Marathi': 'mr',
+        'Gujarati': 'gu',
+        'Kannada': 'kn',
+        'Malayalam': 'ml',
+      };
+      
+      final langCode = langCodes[language] ?? 'hi';
+      final ttsUrl = _buildApiUrl('/synthesize');
+      
+      final response = await http.post(
+        ttsUrl,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'text': text, 'language': langCode}),
+      ).timeout(const Duration(seconds: 30));
+      
+      if (response.statusCode == 200) {
+        // Play audio using HTML audio element
+        final base64Audio = base64Encode(response.bodyBytes);
+        final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
+        
+        // Use JavaScript to play audio
+        html.AudioElement audio = html.AudioElement(audioUrl);
+        await audio.play().catchError((_) {
+          // Ignore play errors
+        });
+      }
     } catch (_) {
-      // Nothing more to try.
-    } finally {
-      if (mounted && _activeSpeechKey == rawText) {
-        setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
-      }
-    }
-  }
-
-  Future<void> _pauseSpeaking() async {
-    // AudioContext path: suspend the context (pauses all audio)
-    if (_audioContext != null && _audioContext!.state == 'running') {
-      await _audioContext!.suspend();
-      if (mounted) setState(() { _isSpeaking = false; _isPaused = true; });
-    } else {
-      // flutter_tts fallback path
-      await _tts.pause();
-    }
-  }
-
-  Future<void> _resumeSpeaking() async {
-    if (_audioContext != null && _audioContext!.state == 'suspended') {
-      await _audioContext!.resume();
-      if (mounted) setState(() { _isSpeaking = true; _isPaused = false; });
-    } else {
-      await _tts.resume();
-    }
-  }
-
-  Future<void> _stopSpeaking() async {
-    // Stop AudioContext source
-    try { _currentSource?.stop(); } catch (_) {}
-    _currentSource = null;
-    // Resume context so it's ready for next play (stop ≠ suspend)
-    if (_audioContext != null && _audioContext!.state == 'suspended') {
-      try { await _audioContext!.resume(); } catch (_) {}
-    }
-    // Stop flutter_tts fallback too
-    await _tts.stop();
-    if (mounted) {
-      setState(() { _isSpeaking = false; _isPaused = false; _activeSpeechKey = null; });
-    }
-  }
-
-  // Splits text into sentence-sized chunks for progressive playback.
-  // Smaller chunks = faster first-audio, at the cost of a tiny gap between
-  // sentences. 350 chars gives roughly 2-3 sentences per chunk which
-  // Sarvam can synthesize in ~0.5-1 second.
-  // Splits text into chunks optimised for low-latency progressive playback.
-  // The FIRST chunk is tiny (≤50 chars, ~1 short sentence) so it arrives from
-  // Sarvam in ~1-2 seconds. Subsequent chunks are larger (≤300 chars) for
-  // efficiency. Both sizes prefer sentence boundaries over hard cuts.
-  List<String> _splitIntoSpeechChunks(String text) {
-    text = text.trim();
-    if (text.isEmpty) return [];
-
-    final result = <String>[];
-    // First chunk: very short for fast first-audio latency
-    final first = _cutChunk(text, 50);
-    result.add(first);
-    text = text.substring(first.length).trim();
-
-    // Remaining chunks: larger for efficiency
-    while (text.isNotEmpty) {
-      final chunk = _cutChunk(text, 300);
-      result.add(chunk);
-      text = text.substring(chunk.length).trim();
-    }
-    return result.where((c) => c.isNotEmpty).toList();
-  }
-
-  // Returns the longest prefix of [text] up to [maxLen] that ends at a
-  // sentence boundary. Falls back to a hard cut if no boundary is found.
-  String _cutChunk(String text, int maxLen) {
-    if (text.length <= maxLen) return text;
-    final slice = text.substring(0, maxLen);
-    final cut = [
-      slice.lastIndexOf('. '),
-      slice.lastIndexOf('। '),
-      slice.lastIndexOf('? '),
-      slice.lastIndexOf('! '),
-      slice.lastIndexOf('\n'),
-      slice.lastIndexOf(', '),
-    ].where((i) => i > 20).fold(-1, (best, i) => i > best ? i : best);
-    return cut < 0 ? slice : text.substring(0, cut + 1);
-  }
-
-  // Fetches audio for a single text chunk from the backend.
-  Future<Uint8List> _fetchChunkAudio(String chunk, String langCode) async {
-    final ttsUrl = _buildApiUrl('/synthesize');
-    final response = await http.post(
-      ttsUrl,
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode({'text': chunk, 'language': langCode}),
-    ).timeout(const Duration(seconds: 30));
-
-    if (response.statusCode != 200) {
-      throw Exception('Backend TTS failed (${response.statusCode}): ${response.body}');
-    }
-    return response.bodyBytes;
-  }
-
-  // Plays audio bytes and waits until playback finishes.
-  // Uses Web Audio API (AudioContext) as primary path -- this works
-  // regardless of how long ago the user tapped the button, because the
-  // AudioContext was unlocked synchronously in _speak() and stays running.
-  // Falls back to HTMLAudioElement if AudioContext is unavailable.
-  Future<bool> _playAudioBytes(Uint8List bytes, String speechKey) async {
-    if (_audioContext != null) {
-      return _playViAudioContext(bytes);
-    }
-    return _playViaAudioElement(bytes);
-  }
-
-  Future<bool> _playViAudioContext(Uint8List bytes) async {
-    try {
-      // Resume context if the browser suspended it during inactivity
-      if (_audioContext!.state == 'suspended') {
-        await _audioContext!.resume();
-      }
-
-      // Decode the MP3 bytes into a PCM AudioBuffer
-      final audioBuffer = await _audioContext!.decodeAudioData(bytes.buffer);
-
-      final source = _audioContext!.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connectNode(_audioContext!.destination!);
-      _currentSource = source;
-
-      final completer = Completer<bool>();
-      source.onEnded.listen((_) {
-        _currentSource = null;
-        if (!completer.isCompleted) completer.complete(true);
-      });
-
-      source.start(0);
-      return completer.future;
-    } catch (e) {
-      _currentSource = null;
-      debugPrint('[audio] AudioContext playback failed: $e, trying AudioElement');
-      return _playViaAudioElement(bytes);
-    }
-  }
-
-  Future<bool> _playViaAudioElement(Uint8List bytes) async {
-    final blob = html.Blob([bytes], 'audio/mpeg');
-    final audioUrl = html.Url.createObjectUrlFromBlob(blob);
-    final audio = html.AudioElement(audioUrl);
-
-    final completer = Completer<bool>();
-    audio.onEnded.listen((_) {
-      html.Url.revokeObjectUrl(audioUrl);
-      if (!completer.isCompleted) completer.complete(true);
-    });
-    audio.onError.listen((_) {
-      html.Url.revokeObjectUrl(audioUrl);
-      if (!completer.isCompleted) completer.complete(false);
-    });
-
-    try {
-      await audio.play();
-    } catch (e) {
-      html.Url.revokeObjectUrl(audioUrl);
-      throw Exception('Audio blocked by browser: $e. Tap again.');
-    }
-
-    return completer.future;
-  }
-
-  // Backend TTS with fully parallel chunk fetching.
-  // ALL chunks are fetched from Sarvam simultaneously the moment the
-  // button is tapped. Chunk 0 (50 chars, ~1 short sentence) is tiny so
-  // it arrives from Sarvam in ~1-2 seconds and starts playing immediately.
-  // Chunks 1-N arrive during that playback -- when chunk 0 ends, chunk 1
-  // is already in memory and starts instantly with zero gap.
-  Future<void> _speakViaBackend(String text, String language, {String? speechKey}) async {
-    final langCode = _languageCodeFor(language);
-    final key = speechKey ?? text;
-    final chunks = _splitIntoSpeechChunks(text);
-    if (chunks.isEmpty) return;
-
-    // Launch ALL fetches in parallel immediately. Don't await anything yet --
-    // just fire every request at once so Sarvam can work on all of them
-    // simultaneously while we await them in order below.
-    final futures = chunks.map((c) => _fetchChunkAudio(c, langCode)).toList();
-
-    for (var i = 0; i < chunks.length; i++) {
-      if (_activeSpeechKey != key || !_isSpeaking) {
-        // User stopped -- cancel remaining fetches by letting them complete
-        // and discarding the result (HTTP doesn't have cancellation in Dart)
-        return;
-      }
-
-      // Await this chunk's fetch (may already be done if Sarvam was fast)
-      final Uint8List bytes;
-      try {
-        bytes = await futures[i];
-      } catch (e) {
-        // One chunk failed -- stop rather than playing corrupted audio
-        debugPrint('[tts] chunk $i fetch failed: $e');
-        break;
-      }
-
-      if (_activeSpeechKey != key || !_isSpeaking) return;
-
-      final completed = await _playAudioBytes(bytes, key);
-
-      if (!completed || _activeSpeechKey != key || !_isSpeaking) return;
-    }
-
-    if (mounted && _activeSpeechKey == key) {
-      setState(() {
-        _isSpeaking = false;
-        _isPaused = false;
-        _activeSpeechKey = null;
-      });
+      // Silently fail
     }
   }
 
@@ -888,13 +548,10 @@ class _HomePageState extends State<HomePage> {
 
       // Split on sentence endings or newlines so each chunk is small
       List<String> _splitBody(String body) {
-        final raw = _stripDecorativeSymbols(body).replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+        final raw = body.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
         final List<String> parts = [];
         for (final para in raw.split('\n')) {
           final p = para.trim();
-          // A line that was purely a decorative separator ("======",
-          // "------", etc.) becomes empty after stripping above -- skip
-          // it entirely instead of adding a blank paragraph/bullet.
           if (p.isEmpty) continue;
           // Further split long paragraphs on '. ' boundaries (~150 chars max each)
           if (p.length <= 150) {
@@ -907,7 +564,7 @@ class _HomePageState extends State<HomePage> {
             }
           }
         }
-        return parts.isEmpty ? [] : parts;
+        return parts.isEmpty ? [body.trim()] : parts;
       }
 
       void addSection(String title, String body) {
@@ -931,7 +588,6 @@ class _HomePageState extends State<HomePage> {
         for (final b in bullets) {
           // Each bullet may itself be long — split it too
           final chunks = _splitBody(b);
-          if (chunks.isEmpty) continue; // bullet was purely decorative symbols
           items.add(pw.Text('  \u2022  ${chunks.first}', style: _bodyStyle));
           for (final extra in chunks.skip(1)) {
             items.add(pw.Text('     $extra', style: _bodyStyle));
@@ -1375,7 +1031,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-        backgroundColor: const Color(0xFFA01A1A),
+        backgroundColor: const Color(0xFF134E4A),
         actions: [
           if (_isTranslating)
             const Padding(
@@ -1416,6 +1072,7 @@ class _HomePageState extends State<HomePage> {
               _buildUploadTab(),
               _buildExplainTab(),
               _buildSuggestionsTab(),
+              _buildTrendsTab(),
               _buildSettingsTab(),
             ],
           ),
@@ -1443,7 +1100,7 @@ class _HomePageState extends State<HomePage> {
                         width: 48, height: 48,
                         child: CircularProgressIndicator(
                           strokeWidth: 3,
-                          color: Color(0xFFA01A1A),
+                          color: Color(0xFF0D9488),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -1470,27 +1127,32 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) => setState(() => _currentIndex = index),
-        backgroundColor: Colors.white,
-        indicatorColor: Color(0xFFA01A1A).withValues(alpha: 0.2),
+        backgroundColor: const Color(0xFFFFFFFF),
+        indicatorColor: const Color(0xFFCCFBF1),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.upload_file, color: Colors.grey),
-            selectedIcon: Icon(Icons.upload_file, color: Color(0xFFA01A1A)),
+            selectedIcon: Icon(Icons.upload_file, color: Color(0xFF0F766E)),
             label: 'Upload',
           ),
           NavigationDestination(
             icon: Icon(Icons.description_outlined, color: Colors.grey),
-            selectedIcon: Icon(Icons.description, color: Color(0xFFA01A1A)),
+            selectedIcon: Icon(Icons.description, color: Color(0xFF0F766E)),
             label: 'Explain',
           ),
           NavigationDestination(
             icon: Icon(Icons.tips_and_updates_outlined, color: Colors.grey),
-            selectedIcon: Icon(Icons.tips_and_updates, color: Color(0xFFA01A1A)),
+            selectedIcon: Icon(Icons.tips_and_updates, color: Color(0xFF0F766E)),
             label: 'Suggestions',
           ),
           NavigationDestination(
+            icon: Icon(Icons.show_chart, color: Colors.grey),
+            selectedIcon: Icon(Icons.show_chart, color: Color(0xFF0F766E)),
+            label: 'Trends',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.settings_outlined, color: Colors.grey),
-            selectedIcon: Icon(Icons.settings, color: Color(0xFFA01A1A)),
+            selectedIcon: Icon(Icons.settings, color: Color(0xFF0F766E)),
             label: 'Settings',
           ),
         ],
@@ -1507,14 +1169,14 @@ class _HomePageState extends State<HomePage> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFFFAEAEA),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE8BEBE)),
+              color: const Color(0xFFE8FFFA),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF99F6E4)),
             ),
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.health_and_safety, color: Color(0xFFA01A1A), size: 36),
+                Icon(Icons.health_and_safety, color: Color(0xFF0F766E), size: 36),
                 SizedBox(height: 12),
                 Text(
                   'Medical Report Assistant',
@@ -1523,7 +1185,7 @@ class _HomePageState extends State<HomePage> {
                 SizedBox(height: 8),
                 const Text(
                   '📋 We provide your report in any language that is easy to understand.',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF555555), height: 1.4),
+                  style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
                 ),
               ],
             ),
@@ -1544,7 +1206,7 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.upload_file),
             label: const Text('Upload PDF Report'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFA01A1A),
+              backgroundColor: const Color(0xFF0D9488),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
               elevation: 4,
@@ -1645,6 +1307,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildResultOverview() {
+    final risk = ((_reportData!['risk_probability'] ?? 0) as num).toDouble();
+    final suggestions = _asStringList(_reportData!['translated_suggestions']);
+    final hasHindiGuide = (_reportData!['disease_explanation_hi'] ?? '').toString().trim().isNotEmpty;
+    final factors = _causalFactors();
+
     return Card(
       color: Colors.white,
       elevation: 2,
@@ -1654,28 +1321,59 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green),
-                SizedBox(width: 8),
-                Expanded(
+                const Icon(Icons.check_circle, color: Colors.green),
+                const SizedBox(width: 8),
+                const Expanded(
                   child: Text(
                     'Report Processed Successfully',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
+                _buildStatusPill(_riskLabel(risk), _riskColor(risk)),
               ],
+            ),
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: risk.clamp(0, 1).toDouble(),
+              color: _riskColor(risk),
+              backgroundColor: Colors.grey.shade200,
+              minHeight: 8,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Risk probability: ${(risk * 100).toStringAsFixed(1)}%',
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
+                _buildInfoChip(Icons.translate, hasHindiGuide ? 'Hindi guide ready' : 'Basic guide ready'),
+                _buildInfoChip(Icons.fact_check, '${suggestions.length} improvement steps'),
+                _buildInfoChip(Icons.analytics, '${factors.length} risk factors'),
                 _buildInfoChip(Icons.volume_up, 'Voice support'),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatusPill(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
       ),
     );
   }
@@ -1695,6 +1393,52 @@ class _HomePageState extends State<HomePage> {
       return value.map((item) => item.toString()).where((item) => item.trim().isNotEmpty).toList();
     }
     return const [];
+  }
+
+  Map<String, dynamic> _causalAnalysis() {
+    final report = _reportData;
+    if (report == null) return {};
+    final value = report['causal_analysis'];
+    if (value is Map<String, dynamic>) return value;
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = json.decode(value);
+        if (decoded is Map<String, dynamic>) return decoded;
+      } catch (_) {
+        return {};
+      }
+    }
+    return {};
+  }
+
+  List<Map<String, dynamic>> _causalFactors() {
+    final factors = _causalAnalysis()['causal_factors'];
+    if (factors is List) {
+      return factors
+          .whereType<Map>()
+          .map((item) => item.map((key, value) => MapEntry(key.toString(), value)))
+          .toList();
+    }
+    return const [];
+  }
+
+  String _riskExplanation() {
+    final analysis = _causalAnalysis();
+    final explanation = analysis['causal_explanation']?.toString();
+    if (explanation != null && explanation.trim().isNotEmpty) return explanation;
+    return 'Upload a report to see why this risk level was calculated.';
+  }
+
+  Color _riskColor(double risk) {
+    if (risk < 0.35) return Colors.green;
+    if (risk < 0.75) return Colors.orange;
+    return Colors.red;
+  }
+
+  String _riskLabel(double risk) {
+    if (risk < 0.35) return 'Low';
+    if (risk < 0.75) return 'Medium';
+    return 'High';
   }
 
   Widget _buildExplainTab() {
@@ -1775,30 +1519,26 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 16),
           
-          // Translated Card -- only shown for a non-English language,
-          // since for English this duplicated the Simple Explanation
-          // card above with identical content.
-          if (_selectedLanguage != 'English') ...[
-            _buildSectionCard(
-              title: '$_selectedLanguage Explanation',
-              icon: Icons.translate,
-              content: _isTranslating
-                  ? '⏳ Translating to $_selectedLanguage...'
-                  : (_reportData!['translated_explanation']?.toString().isNotEmpty == true
-                      ? _reportData!['translated_explanation']
-                      : 'Translation not available. Tap the language button above to retranslate.'),
-              canSpeak: !_isTranslating,
-              extraAction: _reportData != null && !_isTranslating
-                  ? IconButton(
-                      icon: const Icon(Icons.refresh, size: 20),
-                      tooltip: 'Retranslate',
-                      color: const Color(0xFFA01A1A),
-                      onPressed: () => _retranslate(_selectedLanguage),
-                    )
-                  : null,
-            ),
-            const SizedBox(height: 16),
-          ],
+          // Translated Card
+          _buildSectionCard(
+            title: '$_selectedLanguage Explanation',
+            icon: Icons.translate,
+            content: _isTranslating
+                ? '⏳ Translating to $_selectedLanguage...'
+                : (_reportData!['translated_explanation']?.toString().isNotEmpty == true
+                    ? _reportData!['translated_explanation']
+                    : 'Translation not available. Tap the language button above to retranslate.'),
+            canSpeak: !_isTranslating,
+            extraAction: _reportData != null && !_isTranslating
+                ? IconButton(
+                    icon: const Icon(Icons.refresh, size: 20),
+                    tooltip: 'Retranslate',
+                    color: const Color(0xFFA01A1A),
+                    onPressed: () => _retranslate(_selectedLanguage),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 16),
           
           // Suggestions Card
           if (_reportData!['suggestions'] != null &&
@@ -2158,36 +1898,12 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 if (extraAction != null) extraAction,
-                if (canSpeak) ...[
+                if (canSpeak)
                   IconButton(
-                    icon: Icon(
-                      _activeSpeechKey == content && _isSpeaking
-                          ? Icons.pause_circle_filled
-                          : _activeSpeechKey == content && _isPaused
-                              ? Icons.play_circle_filled
-                              : Icons.volume_up,
-                      color: const Color(0xFFA01A1A),
-                    ),
-                    onPressed: () {
-                      if (_activeSpeechKey == content && _isSpeaking) {
-                        _pauseSpeaking();
-                      } else if (_activeSpeechKey == content && _isPaused) {
-                        _resumeSpeaking();
-                      } else {
-                        _speak(content);
-                      }
-                    },
-                    tooltip: _activeSpeechKey == content
-                        ? (_isSpeaking ? 'Pause' : (_isPaused ? 'Resume' : 'Speak'))
-                        : 'Speak',
+                    icon: const Icon(Icons.volume_up, color: Color(0xFFA01A1A)),
+                    onPressed: () => _speak(content),
+                    tooltip: 'Speak',
                   ),
-                  if (_activeSpeechKey == content && (_isSpeaking || _isPaused))
-                    IconButton(
-                      icon: const Icon(Icons.stop_circle, color: Color(0xFFA01A1A)),
-                      onPressed: _stopSpeaking,
-                      tooltip: 'Stop',
-                    ),
-                ],
               ],
             ),
             const Divider(),
@@ -2202,6 +1918,847 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildTrendsTab() {
+    final factors = _causalFactors();
+    final risk = _reportData != null
+        ? ((_reportData!['risk_probability'] ?? 0) as num).toDouble()
+        : 0.0;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Risk Gauge
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: _riskColor(risk).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(Icons.monitor_heart, color: _riskColor(risk)),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Risk Assessment',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      _buildStatusPill(_riskLabel(risk), _riskColor(risk)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 200,
+                    child: _buildRiskGauge(),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _riskExplanation(),
+                    style: TextStyle(fontSize: 13, height: 1.4, color: Colors.grey.shade700),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Temporal Analysis
+          const Text(
+            'Temporal Analysis',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          _buildTemporalAnalysisChart(),
+          const SizedBox(height: 16),
+          
+          const Text(
+            'Why This Risk?',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (factors.isNotEmpty)
+            ...factors.map((factor) => _buildRiskFactorTile(factor))
+          else
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Upload a report to see risk factors',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendDot(Color color, String label) {
+    return Row(
+      children: [
+        Container(
+          width: 10, height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ],
+    );
+  }
+
+  // ── Colour palette for time-series lines ──────────────────
+  static const List<Color> _lineColors = [
+    Color(0xFFA01A1A), Color(0xFF1565C0), Color(0xFF2E7D32),
+    Color(0xFFE65100), Color(0xFF6A1B9A), Color(0xFF00838F),
+    Color(0xFFF9A825), Color(0xFF37474F),
+  ];
+
+  Widget _buildTemporalAnalysisChart() {
+    if (_reportData == null || _reportData!['temporal_analysis'] == null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            Icon(Icons.timeline, color: Colors.grey.shade400),
+            const SizedBox(width: 12),
+            const Text('Upload a report to see temporal analysis',
+                style: TextStyle(color: Colors.grey)),
+          ]),
+        ),
+      );
+    }
+
+    Map<String, dynamic> temporal = {};
+    try {
+      final raw = _reportData!['temporal_analysis'];
+      temporal = raw is String ? json.decode(raw) : Map<String, dynamic>.from(raw);
+    } catch (_) {}
+
+    final List  trends      = temporal['trends']      is List ? temporal['trends']      as List : [];
+    final List  timeSeries  = temporal['time_series'] is List ? temporal['time_series'] as List : [];
+    final List  alerts      = temporal['alerts']      is List ? temporal['alerts']      as List : [];
+    final String timeAnalysis = temporal['time_analysis']?.toString()    ?? '';
+    final String comparisons  = temporal['comparisons']?.toString()      ?? '';
+    final String pattern      = temporal['pattern_detected']?.toString() ?? '';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+
+        // ════════════════════════════════════════════════════
+        //  CHART 1 — TIME vs DISEASE (Line chart, multi-series)
+        //  X-axis = date labels, Y-axis = actual lab values
+        //  One coloured line per disease parameter
+        // ════════════════════════════════════════════════════
+        if (timeSeries.isNotEmpty)
+          _buildTimeSeriesCard(timeSeries)
+        else
+          _buildNoTimeSeriesCard(timeAnalysis),
+
+        const SizedBox(height: 12),
+
+        // ════════════════════════════════════════════════════
+        //  CHART 2 — DEVIATION BAR CHART (current report)
+        //  X-axis = parameters, Y-axis = % deviation from normal
+        // ════════════════════════════════════════════════════
+        if (trends.isNotEmpty) _buildDeviationCard(trends),
+
+        const SizedBox(height: 10),
+
+        // Summary / comparison card
+        if (comparisons.isNotEmpty &&
+            comparisons != 'No historical comparison available')
+          _buildInfoCard(Icons.compare_arrows, Colors.indigo,
+              'Trend Summary', comparisons),
+
+        if (pattern.isNotEmpty &&
+            pattern != 'No persistent pattern identified') ...[
+          const SizedBox(height: 8),
+          _buildInfoCard(Icons.pattern, Colors.purple,
+              'Pattern Detected', pattern),
+        ],
+
+        // Alerts
+        if (alerts.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ...alerts.map((a) => _buildAlertCard(a.toString())),
+        ],
+      ],
+    );
+  }
+
+  // ── Chart 1: Time vs Disease ─────────────────────────────
+  Widget _buildTimeSeriesCard(List timeSeries) {
+    // Build one LineChartBarData per parameter
+    // All share the same X indices (0, 1, 2…) mapped to date labels
+    final List<String> dateLabels = [];
+    if (timeSeries.isNotEmpty && timeSeries[0] is Map) {
+      final hist = (timeSeries[0] as Map)['history'];
+      if (hist is List) {
+        for (final h in hist) {
+          if (h is Map) dateLabels.add(h['date']?.toString() ?? '');
+        }
+      }
+    }
+    if (dateLabels.isEmpty) return const SizedBox();
+
+    // Build a line per parameter (cap at 8 for readability)
+    final List<LineChartBarData> lines = [];
+    final List<String> paramNames = [];
+
+    for (int p = 0; p < timeSeries.length && p < 8; p++) {
+      final ts = timeSeries[p];
+      if (ts is! Map) continue;
+      final hist   = ts['history'] as List? ?? [];
+      final param  = ts['parameter']?.toString() ?? 'Param ${p+1}';
+      final color  = _lineColors[p % _lineColors.length];
+
+      final List<FlSpot> spots = [];
+      for (int i = 0; i < hist.length; i++) {
+        final h = hist[i];
+        if (h is Map && h['value'] != null) {
+          final v = (h['value'] as num).toDouble();
+          spots.add(FlSpot(i.toDouble(), v));
+        }
+      }
+      if (spots.length < 2) continue;
+
+      paramNames.add(param);
+      lines.add(LineChartBarData(
+        spots: spots,
+        isCurved: true,
+        color: color,
+        barWidth: 2.5,
+        dotData: FlDotData(
+          show: true,
+          getDotPainter: (spot, pct, bar, idx) => FlDotCirclePainter(
+            radius: 4,
+            color: color,
+            strokeColor: Colors.white,
+            strokeWidth: 1.5,
+          ),
+        ),
+        belowBarData: BarAreaData(
+          show: true,
+          color: color.withValues(alpha: 0.06),
+        ),
+      ));
+    }
+
+    if (lines.isEmpty) return const SizedBox();
+
+    // Compute Y range across all spots
+    double minY = double.infinity, maxY = double.negativeInfinity;
+    for (final l in lines) {
+      for (final s in l.spots) {
+        if (s.y < minY) minY = s.y;
+        if (s.y > maxY) maxY = s.y;
+      }
+    }
+    final double yPad = ((maxY - minY) * 0.15).clamp(0.5, 50.0);
+    minY = (minY - yPad).clamp(0.0, double.infinity);
+    maxY = maxY + yPad;
+
+    final double chartWidth =
+        (dateLabels.length * 90.0).clamp(280.0, 800.0);
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title
+            Row(children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA01A1A).withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.show_chart,
+                    color: Color(0xFFA01A1A), size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Disease vs Time',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    Text('X-axis: Visit dates  |  Y-axis: Lab value',
+                        style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  ],
+                ),
+              ),
+            ]),
+            const SizedBox(height: 16),
+
+            // Chart
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Rotated Y-axis label
+              SizedBox(
+                width: 20, height: 240,
+                child: Center(
+                  child: RotatedBox(
+                    quarterTurns: 3,
+                    child: Text('Lab Value',
+                        style: TextStyle(fontSize: 10,
+                            color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: chartWidth,
+                    height: 240,
+                    child: LineChart(LineChartData(
+                      minY: minY,
+                      maxY: maxY,
+                      lineBarsData: lines,
+                      borderData: FlBorderData(
+                        show: true,
+                        border: Border(
+                          bottom: BorderSide(color: Colors.grey.shade400, width: 1.2),
+                          left:   BorderSide(color: Colors.grey.shade400, width: 1.2),
+                        ),
+                      ),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: true,
+                        horizontalInterval: ((maxY - minY) / 4).clamp(0.1, 999),
+                        verticalInterval: 1,
+                        getDrawingHorizontalLine: (_) => FlLine(
+                            color: Colors.grey.shade200, strokeWidth: 0.8),
+                        getDrawingVerticalLine: (_) => FlLine(
+                            color: Colors.grey.shade100, strokeWidth: 0.6),
+                      ),
+                      titlesData: FlTitlesData(
+                        // Y-axis: actual values
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 44,
+                            interval: ((maxY - minY) / 4).clamp(0.1, 999),
+                            getTitlesWidget: (v, meta) {
+                              if (v == meta.max || v == meta.min) return const SizedBox();
+                              return Text(
+                                v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1),
+                                style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                                textAlign: TextAlign.right,
+                              );
+                            },
+                          ),
+                        ),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        // X-axis: date labels
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 36,
+                            interval: 1,
+                            getTitlesWidget: (v, meta) {
+                              final idx = v.toInt();
+                              if (idx < 0 || idx >= dateLabels.length) return const SizedBox();
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(dateLabels[idx],
+                                    style: const TextStyle(
+                                        fontSize: 9.5, fontWeight: FontWeight.w600,
+                                        color: Colors.black87)),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (_) => const Color(0xFF2B2B2B),
+                          getTooltipItems: (spots) {
+                            return spots.map((s) {
+                              final idx = s.barIndex;
+                              final name = idx < paramNames.length ? paramNames[idx] : '';
+                              final date = s.x.toInt() < dateLabels.length
+                                  ? dateLabels[s.x.toInt()] : '';
+                              return LineTooltipItem(
+                                '$name\n$date: ${s.y % 1 == 0 ? s.y.toInt() : s.y.toStringAsFixed(2)}',
+                                const TextStyle(color: Colors.white, fontSize: 11, height: 1.5),
+                              );
+                            }).toList();
+                          },
+                        ),
+                      ),
+                    )),
+                  ),
+                ),
+              ),
+            ]),
+
+            // X-axis label
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 26),
+              child: Center(
+                child: Text('Visit / Report Date',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500)),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Colour legend — one dot per parameter
+            Wrap(
+              spacing: 12, runSpacing: 6,
+              children: paramNames.asMap().entries.map((e) =>
+                _legendDot(_lineColors[e.key % _lineColors.length], e.value)
+              ).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Chart 2: Deviation bar chart (current report) ────────
+  Widget _buildDeviationCard(List trends) {
+    final List<BarChartGroupData> barGroups = [];
+    final List<String> xLabels    = [];
+    final List<String> fullLabels = [];
+    double maxAbsDev = 100.0;
+
+    for (int i = 0; i < trends.length; i++) {
+      final t = trends[i];
+      if (t is! Map) continue;
+
+      double dev = 0.0;
+      if (t['deviation_pct'] != null) {
+        dev = (t['deviation_pct'] as num).toDouble().clamp(-300.0, 300.0);
+      } else if (t['percent_of_normal'] != null) {
+        dev = ((t['percent_of_normal'] as num).toDouble() - 100.0).clamp(-300.0, 300.0);
+      }
+      if (dev.abs() > maxAbsDev) maxAbsDev = dev.abs();
+
+      final status = (t['status'] ?? 'normal').toString().toLowerCase();
+      final Color barColor = dev > 0
+          ? (status == 'critical' ? const Color(0xFF8B0000) : const Color(0xFFA01A1A))
+          : dev < 0
+              ? const Color(0xFFE65100)
+              : const Color(0xFF2E7D32);
+
+      final full  = t['parameter']?.toString() ?? 'Item ${i+1}';
+      final short = full.length > 8 ? full.substring(0, 8) : full;
+      xLabels.add(short);
+      fullLabels.add(full);
+
+      barGroups.add(BarChartGroupData(
+        x: i,
+        barRods: [
+          BarChartRodData(
+            fromY: 0, toY: dev,
+            color: barColor,
+            width: trends.length > 16 ? 7 : (trends.length > 10 ? 10 : 14),
+            borderRadius: BorderRadius.only(
+              topLeft:     dev >= 0 ? const Radius.circular(4) : Radius.zero,
+              topRight:    dev >= 0 ? const Radius.circular(4) : Radius.zero,
+              bottomLeft:  dev <  0 ? const Radius.circular(4) : Radius.zero,
+              bottomRight: dev <  0 ? const Radius.circular(4) : Radius.zero,
+            ),
+          ),
+        ],
+      ));
+    }
+
+    final double yMax      = (maxAbsDev * 1.2).ceilToDouble();
+    final double yInterval = yMax <= 100 ? 25 : (yMax <= 200 ? 50 : 100);
+    final double barWidth  = trends.length > 16 ? 9.0 : (trends.length > 10 ? 13.0 : 18.0);
+    final double chartWidth = (trends.length * (barWidth + 14)).clamp(300.0, 2000.0);
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA01A1A).withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.bar_chart_rounded,
+                    color: Color(0xFFA01A1A), size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Lab Value Deviation from Normal',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    Text('Y-axis: % deviation  |  0 = normal midpoint  |  ±100 = range boundary',
+                        style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  ],
+                ),
+              ),
+            ]),
+            const SizedBox(height: 16),
+
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                width: 20, height: 280,
+                child: Center(
+                  child: RotatedBox(
+                    quarterTurns: 3,
+                    child: Text('% Deviation from Normal',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500,
+                            fontWeight: FontWeight.w500)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: chartWidth, height: 280,
+                    child: BarChart(BarChartData(
+                      maxY: yMax, minY: -yMax,
+                      alignment: BarChartAlignment.spaceAround,
+                      barGroups: barGroups,
+                      borderData: FlBorderData(
+                        show: true,
+                        border: Border(
+                          bottom: BorderSide(color: Colors.grey.shade400, width: 1),
+                          left:   BorderSide(color: Colors.grey.shade400, width: 1),
+                          top:    BorderSide(color: Colors.grey.shade400, width: 1),
+                        ),
+                      ),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: yInterval,
+                        getDrawingHorizontalLine: (value) {
+                          if (value == 0) {
+                            return const FlLine(color: Color(0xFFA01A1A), strokeWidth: 2.0);
+                          }
+                          if (value == 100 || value == -100) {
+                            return FlLine(
+                                color: Colors.orange.withValues(alpha: 0.5),
+                                strokeWidth: 1.2, dashArray: [6, 4]);
+                          }
+                          return FlLine(color: Colors.grey.shade200, strokeWidth: 0.7);
+                        },
+                      ),
+                      titlesData: FlTitlesData(
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 42,
+                            interval: yInterval,
+                            getTitlesWidget: (value, meta) {
+                              if (value == meta.max || value == meta.min) return const SizedBox();
+                              final label = value == 0
+                                  ? 'Normal'
+                                  : '${value > 0 ? "+" : ""}${value.toInt()}%';
+                              return Text(label,
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: value == 0 ? FontWeight.bold : FontWeight.normal,
+                                    color: value == 0
+                                        ? const Color(0xFFA01A1A)
+                                        : value > 0
+                                            ? const Color(0xFFA01A1A).withValues(alpha: 0.7)
+                                            : Colors.orange.shade700,
+                                  ),
+                                  textAlign: TextAlign.right);
+                            },
+                          ),
+                        ),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 48,
+                            getTitlesWidget: (value, meta) {
+                              final idx = value.toInt();
+                              if (idx < 0 || idx >= xLabels.length) return const SizedBox();
+                              return Transform.rotate(
+                                angle: -0.5,
+                                child: Text(xLabels[idx],
+                                    style: const TextStyle(fontSize: 8.5, color: Colors.black87),
+                                    overflow: TextOverflow.ellipsis),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      barTouchData: BarTouchData(
+                        touchTooltipData: BarTouchTooltipData(
+                          maxContentWidth: 190,
+                          getTooltipColor: (_) => const Color(0xFF2B2B2B),
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            if (groupIndex >= trends.length) return null;
+                            final t      = trends[groupIndex] as Map;
+                            final name   = fullLabels[groupIndex];
+                            final val    = t['value']           ?? '—';
+                            final unit   = t['unit']            ?? '';
+                            final status = (t['status'] ?? '—').toString().toUpperCase();
+                            final ref    = t['reference_range'] ?? '—';
+                            final dev    = t['deviation_pct'] != null
+                                ? '${(t['deviation_pct'] as num) >= 0 ? "+" : ""}${(t['deviation_pct'] as num).toStringAsFixed(1)}% from normal'
+                                : '';
+                            return BarTooltipItem(
+                              '$name\nValue: $val $unit\nRef: $ref\nStatus: $status\n$dev',
+                              const TextStyle(color: Colors.white, fontSize: 11, height: 1.5),
+                            );
+                          },
+                        ),
+                      ),
+                    )),
+                  ),
+                ),
+              ),
+            ]),
+
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 26),
+              child: Center(
+                child: Text('Lab Parameters (scroll to see all)',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500)),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            Wrap(spacing: 14, runSpacing: 6, children: [
+              _legendDot(const Color(0xFF2E7D32), 'Normal (0)'),
+              _legendDot(const Color(0xFFA01A1A), 'High (+)'),
+              _legendDot(const Color(0xFFE65100), 'Low (-)'),
+              _legendDot(const Color(0xFF8B0000), 'Critical'),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoTimeSeriesCard(String timeAnalysis) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(Icons.show_chart, size: 40, color: Colors.grey.shade300),
+            const SizedBox(height: 8),
+            Text(
+              timeAnalysis.isNotEmpty
+                  ? timeAnalysis
+                  : 'No multi-visit data found.\nUpload reports containing a trend summary table (with dates like Jan, Feb, May) to see time vs disease chart.',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(IconData icon, Color color, String title, String body) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color.withValues(alpha: 0.8), size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
+                          color: color.withValues(alpha: 0.9))),
+                  const SizedBox(height: 4),
+                  Text(body, style: const TextStyle(fontSize: 13)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlertCard(String alert) {
+    return Card(
+      elevation: 1,
+      color: Colors.red.shade50,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red.shade400, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(alert,
+                  style: TextStyle(fontSize: 13, color: Colors.red.shade700)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+    Widget _buildRiskFactorTile(Map<String, dynamic> factor) {
+    final label = factor['factor']?.toString() ?? 'Risk factor';
+    final cause = factor['cause']?.toString() ?? '';
+    final probability = factor['probability'];
+    final percent = probability is num ? '${(probability * 100).toStringAsFixed(0)}%' : '';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.priority_high, color: Colors.amber.shade800, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
+                      if (percent.isNotEmpty) _buildStatusPill(percent, Colors.blueGrey),
+                    ],
+                  ),
+                  if (cause.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      cause,
+                      style: TextStyle(fontSize: 13, height: 1.35, color: Colors.grey.shade700),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRiskGauge() {
+    double risk = _reportData != null
+        ? (_reportData!['risk_probability'] ?? 0).toDouble()
+        : 0.0;
+    
+    Color riskColor;
+    String riskLevel;
+    
+    if (risk < 0.35) {
+      riskColor = Colors.green;
+      riskLevel = 'Low';
+    } else if (risk < 0.75) {
+      riskColor = Colors.orange;
+      riskLevel = 'Medium';
+    } else {
+      riskColor = Colors.red;
+      riskLevel = 'High';
+    }
+    
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        PieChart(
+          PieChartData(
+            sectionsSpace: 0,
+            centerSpaceRadius: 60,
+            startDegreeOffset: 180,
+            sections: [
+              PieChartSectionData(
+                value: risk * 100,
+                color: riskColor,
+                radius: 30,
+                showTitle: false,
+              ),
+              PieChartSectionData(
+                value: (1 - risk) * 100,
+                color: Colors.grey.shade300,
+                radius: 30,
+                showTitle: false,
+              ),
+            ],
+          ),
+        ),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${(risk * 100).toStringAsFixed(0)}%',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: riskColor,
+              ),
+            ),
+            Text(
+              riskLevel,
+              style: TextStyle(
+                fontSize: 16,
+                color: riskColor,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
   Widget _buildSettingsTab() {
     return SingleChildScrollView(
@@ -2317,8 +2874,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _tts.stop();
-    try { _currentSource?.stop(); } catch (_) {}
-    try { _audioContext?.close(); } catch (_) {}
     _pollingTimer?.cancel();
     super.dispose();
   }
