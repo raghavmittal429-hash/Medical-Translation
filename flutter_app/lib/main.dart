@@ -1072,7 +1072,6 @@ class _HomePageState extends State<HomePage> {
               _buildUploadTab(),
               _buildExplainTab(),
               _buildSuggestionsTab(),
-              _buildTrendsTab(),
               _buildSettingsTab(),
             ],
           ),
@@ -1146,11 +1145,6 @@ class _HomePageState extends State<HomePage> {
             label: 'Suggestions',
           ),
           NavigationDestination(
-            icon: Icon(Icons.show_chart, color: Colors.grey),
-            selectedIcon: Icon(Icons.show_chart, color: Color(0xFF0F766E)),
-            label: 'Trends',
-          ),
-          NavigationDestination(
             icon: Icon(Icons.settings_outlined, color: Colors.grey),
             selectedIcon: Icon(Icons.settings, color: Color(0xFF0F766E)),
             label: 'Settings',
@@ -1196,8 +1190,6 @@ class _HomePageState extends State<HomePage> {
               Expanded(child: _buildFeatureBadge(Icons.description, 'Explain')),
               const SizedBox(width: 8),
               Expanded(child: _buildFeatureBadge(Icons.lightbulb_outline, 'Suggestions')),
-              const SizedBox(width: 8),
-              Expanded(child: _buildFeatureBadge(Icons.show_chart, 'Risk')),
             ],
           ),
           const SizedBox(height: 24),
