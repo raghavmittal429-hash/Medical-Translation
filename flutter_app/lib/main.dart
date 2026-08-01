@@ -12,6 +12,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'app_content_utils.dart';
 
 void main() {
   runApp(const MedicalCDSSApp());
@@ -53,6 +54,11 @@ class _HomePageState extends State<HomePage> {
   List<dynamic> _availableVoices = [];
   String? _currentJobId;
   Timer? _pollingTimer;
+  bool _isPollingJob = false;
+  bool _isSpeaking = false;
+  int _speechRequestId = 0;
+  bool _speechPlaybackBlocked = false;
+  html.AudioElement? _backendAudio;
 
   final List<Map<String, String>> _languages = [
     {'code': 'en', 'name': 'English', 'native': 'English'},
@@ -275,6 +281,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _processFileBytes(Uint8List bytes, String fileName) async {
+    _pollingTimer?.cancel();
+    _currentJobId = null;
+    var waitingForJob = false;
     setState(() {
       _isLoading = true;
       _reportData = null;
@@ -291,18 +300,26 @@ class _HomePageState extends State<HomePage> {
       ));
       request.fields['language'] = _selectedLanguage;
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await request.send().timeout(const Duration(minutes: 2));
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final decoded = json.decode(response.body);
+        if (decoded is! Map) {
+          throw const FormatException('The server returned an invalid report result.');
+        }
+        final responseData = Map<String, dynamic>.from(decoded);
         final jobId = responseData['job_id'];
 
-        if (jobId != null) {
+        if (jobId is String && jobId.isNotEmpty) {
+          waitingForJob = true;
           _startJobPolling(jobId);
         } else {
+          final result = responseData['result'] is Map
+              ? Map<String, dynamic>.from(responseData['result'] as Map)
+              : responseData;
           setState(() {
-            _reportData = responseData;
+            _reportData = result;
             _isLoading = false;
           });
         }
@@ -312,7 +329,7 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       _showError('Connection error: $e\nMake sure backend is running');
     } finally {
-      if (mounted) {
+      if (mounted && !waitingForJob) {
         setState(() {
           _isLoading = false;
         });
@@ -327,72 +344,108 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _startJobPolling(String jobId) {
-    if (_currentJobId != null) {
-      _pollingTimer?.cancel();
-    }
+    _pollingTimer?.cancel();
     _currentJobId = jobId;
+    _isPollingJob = false;
 
     // Poll every 2 seconds for job status
     _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      if (!mounted || _currentJobId != jobId || _isPollingJob) return;
+      _isPollingJob = true;
       try {
         final statusUrl = _buildApiUrl('/job/$jobId');
-        final response = await http.get(statusUrl);
+        final response = await http.get(statusUrl).timeout(const Duration(seconds: 30));
 
         if (response.statusCode == 200) {
-          final statusData = json.decode(response.body);
+          final decoded = json.decode(response.body);
+          if (decoded is! Map) {
+            _finishJobWithError('The server returned an invalid processing status.');
+            return;
+          }
+          final statusData = Map<String, dynamic>.from(decoded);
 
           if (statusData['status'] == 'completed') {
+            final result = statusData['result'];
+            if (result is! Map) {
+              _finishJobWithError('The report completed without usable results. Please try again.');
+              return;
+            }
             setState(() {
-              _reportData = statusData['result'];
+              _reportData = Map<String, dynamic>.from(result);
               _isLoading = false;
             });
             _pollingTimer?.cancel();
             _currentJobId = null;
           } else if (statusData['status'] == 'failed') {
-            _showError('Processing failed: ${statusData['error']}');
-            setState(() { _isLoading = false; });
-            _pollingTimer?.cancel();
-            _currentJobId = null;
+            _finishJobWithError('Processing failed: ${statusData['error'] ?? 'Unknown error'}');
           }
         } else {
-          _showError('Error checking job status');
-          setState(() { _isLoading = false; });
-          _pollingTimer?.cancel();
-          _currentJobId = null;
+          _finishJobWithError('Unable to check processing status. Please try again.');
         }
       } catch (e) {
-        _showError('Connection error while checking status: $e');
-        setState(() { _isLoading = false; });
-        _pollingTimer?.cancel();
-        _currentJobId = null;
+        _finishJobWithError('Connection error while processing the report. Please try again.');
+      } finally {
+        _isPollingJob = false;
       }
     });
-  
+  }
+
+  void _finishJobWithError(String message) {
+    _pollingTimer?.cancel();
+    _currentJobId = null;
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    _showError(message);
+  }
+
+  Future<void> _stopActiveSpeech() async {
+    _speechPlaybackBlocked = true;
+    final audio = _backendAudio;
+    _backendAudio = null;
+    if (audio != null) {
+      try {
+        audio.pause();
+        audio.src = '';
+      } catch (_) {}
+    }
+    try {
+      await _tts.stop();
+    } catch (_) {}
   }
 
   Future<void> _speak(String text) async {
-    if (text.isEmpty || !_ttsEnabled) return;
+    final spokenText = text.trim();
+    if (spokenText.isEmpty || !_ttsEnabled) return;
 
-    await _tts.stop();
-    await _applyVoiceForLanguage(_selectedLanguage);
+    final requestId = ++_speechRequestId;
+    _speechPlaybackBlocked = false;
+    await _stopActiveSpeech();
+    if (!mounted || requestId != _speechRequestId) return;
+    setState(() => _isSpeaking = true);
+
     try {
-      // Try device TTS first
-      await _tts.speak(text).timeout(const Duration(seconds: 90));
+      await _applyVoiceForLanguage(_selectedLanguage);
+      if (requestId != _speechRequestId) return;
+      await _tts.speak(spokenText).timeout(const Duration(seconds: 90));
     } catch (e) {
-      // Device TTS failed; fall back to backend TTS if available
-      if (_selectedLanguage != 'English') {
+      if (_selectedLanguage != 'English' && !_speechPlaybackBlocked) {
         try {
-          await _speakViaBackend(text, _selectedLanguage);
+          await _speakViaBackend(spokenText, _selectedLanguage, requestId);
         } catch (_) {
-          // Silently fail if backend TTS also fails
+          if (mounted && requestId == _speechRequestId) {
+            _showError('Unable to play this voice. Please try again.');
+          }
         }
+      }
+    } finally {
+      if (mounted && requestId == _speechRequestId && !_speechPlaybackBlocked) {
+        setState(() => _isSpeaking = false);
       }
     }
   }
 
   // Fall back to backend TTS endpoint for languages without device voices
-  Future<void> _speakViaBackend(String text, String language) async {
-    try {
+  Future<void> _speakViaBackend(String text, String language, int requestId) async {
       // Map language name to language code
       final langCodes = {
         'English': 'en',
@@ -415,20 +468,26 @@ class _HomePageState extends State<HomePage> {
         body: json.encode({'text': text, 'language': langCode}),
       ).timeout(const Duration(seconds: 30));
       
-      if (response.statusCode == 200) {
-        // Play audio using HTML audio element
-        final base64Audio = base64Encode(response.bodyBytes);
-        final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
-        
-        // Use JavaScript to play audio
-        html.AudioElement audio = html.AudioElement(audioUrl);
-        await audio.play().catchError((_) {
-          // Ignore play errors
-        });
+      if (response.statusCode != 200) {
+        throw Exception('Voice service returned ${response.statusCode}');
       }
-    } catch (_) {
-      // Silently fail
-    }
+      if (requestId != _speechRequestId) return;
+
+      final base64Audio = base64Encode(response.bodyBytes);
+      final audio = html.AudioElement('data:audio/mpeg;base64,$base64Audio');
+      _backendAudio = audio;
+      try {
+        await audio.play();
+        await audio.onEnded.first.timeout(const Duration(seconds: 90));
+      } catch (_) {
+        if (_backendAudio == audio) {
+          _backendAudio = null;
+        }
+        rethrow;
+      }
+      if (_backendAudio == audio) {
+        _backendAudio = null;
+      }
   }
 
   // Returns an ordered list of locale candidates (best -> fallback).
@@ -1859,6 +1918,9 @@ class _HomePageState extends State<HomePage> {
     bool isHighlighted = false,
     Widget? extraAction,
   }) {
+    final paragraphs = splitIntoReadableParagraphs(content, maxParagraphs: 4);
+    final hasContent = paragraphs.isNotEmpty;
+
     return Card(
       color: isHighlighted ? const Color(0xFFFAEAEA) : null,
       elevation: 2,
@@ -1892,18 +1954,37 @@ class _HomePageState extends State<HomePage> {
                 if (extraAction != null) extraAction,
                 if (canSpeak)
                   IconButton(
-                    icon: const Icon(Icons.volume_up, color: Color(0xFFA01A1A)),
-                    onPressed: () => _speak(content),
-                    tooltip: 'Speak',
+                    icon: Icon(
+                      _isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up,
+                      color: const Color(0xFFA01A1A),
+                    ),
+                    onPressed: () {
+                      if (_isSpeaking) {
+                        _stopActiveSpeech();
+                        setState(() {});
+                      } else {
+                        _speak(content);
+                      }
+                    },
+                    tooltip: _isSpeaking ? 'Stop' : 'Speak',
                   ),
               ],
             ),
             const Divider(),
             const SizedBox(height: 8),
-            Text(
-              content,
-              style: const TextStyle(fontSize: 14, height: 1.45),
-            ),
+            if (!hasContent)
+              Text(
+                'No content available yet.',
+                style: TextStyle(fontSize: 14, height: 1.45, color: Colors.grey.shade600),
+              )
+            else
+              ...paragraphs.map((paragraph) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      paragraph,
+                      style: const TextStyle(fontSize: 14, height: 1.5),
+                    ),
+                  )),
           ],
         ),
       ),
