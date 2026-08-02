@@ -29,13 +29,13 @@ from db import MedicalDatabase
 # Initialize database
 db = MedicalDatabase()
 
+
 # Job tracking
 processing_jobs: Dict[str, Dict] = {}
 job_lock = threading.Lock()
 
 # Thread pool for background processing
 executor = ThreadPoolExecutor(max_workers=4)
-
 
 # ============== API Endpoints ==============
 async def upload_report(request: Request):

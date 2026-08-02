@@ -12,7 +12,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'app_content_utils.dart';
 
 void main() {
   runApp(const MedicalCDSSApp());
@@ -54,11 +53,6 @@ class _HomePageState extends State<HomePage> {
   List<dynamic> _availableVoices = [];
   String? _currentJobId;
   Timer? _pollingTimer;
-  bool _isPollingJob = false;
-  bool _isSpeaking = false;
-  int _speechRequestId = 0;
-  bool _speechPlaybackBlocked = false;
-  html.AudioElement? _backendAudio;
 
   final List<Map<String, String>> _languages = [
     {'code': 'en', 'name': 'English', 'native': 'English'},
@@ -116,6 +110,28 @@ class _HomePageState extends State<HomePage> {
   String _languageCodeOf(String locale) {
     final parts = locale.split(RegExp(r'[-_]'));
     return parts.isNotEmpty ? parts.first.toLowerCase() : locale.toLowerCase();
+  }
+
+  String _languageCodeFor(String language) {
+    for (final entry in _languages) {
+      if (entry['name'] == language) {
+        return entry['code'] ?? _languageCodeOf(_ttsLocalesFor(language).first);
+      }
+    }
+    return _languageCodeOf(_ttsLocalesFor(language).first);
+  }
+
+  bool _hasMatchingDeviceVoice(String language) {
+    if (_availableVoices.isEmpty) return false;
+
+    final targetLocales = _ttsLocalesFor(language);
+    final targetLangCode = _languageCodeOf(targetLocales.first);
+
+    return _availableVoices.any((voice) {
+      final voiceLocale = _voiceLocaleOf(voice).toLowerCase();
+      return targetLocales.map((e) => e.toLowerCase()).contains(voiceLocale) ||
+          _languageCodeOf(voiceLocale) == targetLangCode;
+    });
   }
 
   Future<void> _applyVoiceForLanguage(String language) async {
@@ -199,7 +215,9 @@ class _HomePageState extends State<HomePage> {
     if (name.contains('google')) score += 30;
     if (name.contains('female')) score += 15;
     if (name.contains('smooth') || name.contains('soft')) score += 10;
-    if (name.contains('compact') || name.contains('espeak') || name.contains('festival')) {
+    if (name.contains('compact') ||
+        name.contains('espeak') ||
+        name.contains('festival')) {
       score -= 50;
     }
     return score;
@@ -215,8 +233,10 @@ class _HomePageState extends State<HomePage> {
     try {
       if (voice is Map) {
         final settings = <String, String>{};
-        if (voice.containsKey('name')) settings['name'] = voice['name'].toString();
-        if (voice.containsKey('locale')) settings['locale'] = voice['locale'].toString();
+        if (voice.containsKey('name'))
+          settings['name'] = voice['name'].toString();
+        if (voice.containsKey('locale'))
+          settings['locale'] = voice['locale'].toString();
         if (settings.isNotEmpty) {
           await _tts.setVoice(settings);
         }
@@ -251,7 +271,7 @@ class _HomePageState extends State<HomePage> {
   // Falls back to localhost for local development
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://medical-translation-3.onrender.com',
+    defaultValue: 'https://medical-translation-5.onrender.com',
   );
 
   Uri _buildApiUrl(String path) {
@@ -281,9 +301,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _processFileBytes(Uint8List bytes, String fileName) async {
-    _pollingTimer?.cancel();
-    _currentJobId = null;
-    var waitingForJob = false;
     setState(() {
       _isLoading = true;
       _reportData = null;
@@ -300,26 +317,18 @@ class _HomePageState extends State<HomePage> {
       ));
       request.fields['language'] = _selectedLanguage;
 
-      final streamedResponse = await request.send().timeout(const Duration(minutes: 2));
+      final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        final decoded = json.decode(response.body);
-        if (decoded is! Map) {
-          throw const FormatException('The server returned an invalid report result.');
-        }
-        final responseData = Map<String, dynamic>.from(decoded);
+        final responseData = json.decode(response.body);
         final jobId = responseData['job_id'];
 
-        if (jobId is String && jobId.isNotEmpty) {
-          waitingForJob = true;
+        if (jobId != null) {
           _startJobPolling(jobId);
         } else {
-          final result = responseData['result'] is Map
-              ? Map<String, dynamic>.from(responseData['result'] as Map)
-              : responseData;
           setState(() {
-            _reportData = result;
+            _reportData = responseData;
             _isLoading = false;
           });
         }
@@ -329,7 +338,7 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       _showError('Connection error: $e\nMake sure backend is running');
     } finally {
-      if (mounted && !waitingForJob) {
+      if (mounted) {
         setState(() {
           _isLoading = false;
         });
@@ -344,150 +353,116 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _startJobPolling(String jobId) {
-    _pollingTimer?.cancel();
+    if (_currentJobId != null) {
+      _pollingTimer?.cancel();
+    }
     _currentJobId = jobId;
-    _isPollingJob = false;
 
     // Poll every 2 seconds for job status
     _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      if (!mounted || _currentJobId != jobId || _isPollingJob) return;
-      _isPollingJob = true;
       try {
         final statusUrl = _buildApiUrl('/job/$jobId');
-        final response = await http.get(statusUrl).timeout(const Duration(seconds: 30));
+        final response = await http.get(statusUrl);
 
         if (response.statusCode == 200) {
-          final decoded = json.decode(response.body);
-          if (decoded is! Map) {
-            _finishJobWithError('The server returned an invalid processing status.');
-            return;
-          }
-          final statusData = Map<String, dynamic>.from(decoded);
+          final statusData = json.decode(response.body);
 
           if (statusData['status'] == 'completed') {
-            final result = statusData['result'];
-            if (result is! Map) {
-              _finishJobWithError('The report completed without usable results. Please try again.');
-              return;
-            }
             setState(() {
-              _reportData = Map<String, dynamic>.from(result);
+              _reportData = statusData['result'];
               _isLoading = false;
             });
             _pollingTimer?.cancel();
             _currentJobId = null;
           } else if (statusData['status'] == 'failed') {
-            _finishJobWithError('Processing failed: ${statusData['error'] ?? 'Unknown error'}');
+            _showError('Processing failed: ${statusData['error']}');
+            setState(() {
+              _isLoading = false;
+            });
+            _pollingTimer?.cancel();
+            _currentJobId = null;
           }
         } else {
-          _finishJobWithError('Unable to check processing status. Please try again.');
+          _showError('Error checking job status');
+          setState(() {
+            _isLoading = false;
+          });
+          _pollingTimer?.cancel();
+          _currentJobId = null;
         }
       } catch (e) {
-        _finishJobWithError('Connection error while processing the report. Please try again.');
-      } finally {
-        _isPollingJob = false;
+        _showError('Connection error while checking status: $e');
+        setState(() {
+          _isLoading = false;
+        });
+        _pollingTimer?.cancel();
+        _currentJobId = null;
       }
     });
   }
 
-  void _finishJobWithError(String message) {
-    _pollingTimer?.cancel();
-    _currentJobId = null;
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    _showError(message);
-  }
-
-  Future<void> _stopActiveSpeech() async {
-    _speechPlaybackBlocked = true;
-    final audio = _backendAudio;
-    _backendAudio = null;
-    if (audio != null) {
-      try {
-        audio.pause();
-        audio.src = '';
-      } catch (_) {}
-    }
-    try {
-      await _tts.stop();
-    } catch (_) {}
-  }
-
   Future<void> _speak(String text) async {
-    final spokenText = text.trim();
-    if (spokenText.isEmpty || !_ttsEnabled) return;
+    if (text.isEmpty || !_ttsEnabled) return;
 
-    final requestId = ++_speechRequestId;
-    _speechPlaybackBlocked = false;
-    await _stopActiveSpeech();
-    if (!mounted || requestId != _speechRequestId) return;
-    setState(() => _isSpeaking = true);
+    await _tts.stop();
+    await _applyVoiceForLanguage(_selectedLanguage);
+
+    if (_selectedLanguage != 'English' &&
+        !_hasMatchingDeviceVoice(_selectedLanguage)) {
+      try {
+        await _speakViaBackend(text, _selectedLanguage);
+        return;
+      } catch (_) {
+        // If backend TTS is unavailable, still give device TTS one chance.
+      }
+    }
 
     try {
-      await _applyVoiceForLanguage(_selectedLanguage);
-      if (requestId != _speechRequestId) return;
-      await _tts.speak(spokenText).timeout(const Duration(seconds: 90));
+      // Try device TTS first
+      await _tts.speak(text).timeout(const Duration(seconds: 90));
     } catch (e) {
-      if (_selectedLanguage != 'English' && !_speechPlaybackBlocked) {
+      // Device TTS failed; fall back to backend TTS if available
+      if (_selectedLanguage != 'English') {
         try {
-          await _speakViaBackend(spokenText, _selectedLanguage, requestId);
+          await _speakViaBackend(text, _selectedLanguage);
         } catch (_) {
-          if (mounted && requestId == _speechRequestId) {
-            _showError('Unable to play this voice. Please try again.');
-          }
+          // Silently fail if backend TTS also fails
         }
-      }
-    } finally {
-      if (mounted && requestId == _speechRequestId && !_speechPlaybackBlocked) {
-        setState(() => _isSpeaking = false);
       }
     }
   }
 
   // Fall back to backend TTS endpoint for languages without device voices
-  Future<void> _speakViaBackend(String text, String language, int requestId) async {
-      // Map language name to language code
-      final langCodes = {
-        'English': 'en',
-        'Hindi': 'hi',
-        'Bengali': 'bn',
-        'Tamil': 'ta',
-        'Telugu': 'te',
-        'Marathi': 'mr',
-        'Gujarati': 'gu',
-        'Kannada': 'kn',
-        'Malayalam': 'ml',
-      };
-      
-      final langCode = langCodes[language] ?? 'hi';
+  Future<void> _speakViaBackend(String text, String language) async {
+    try {
+      final langCode = _languageCodeFor(language);
       final ttsUrl = _buildApiUrl('/synthesize');
-      
-      final response = await http.post(
-        ttsUrl,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'text': text, 'language': langCode}),
-      ).timeout(const Duration(seconds: 30));
-      
-      if (response.statusCode != 200) {
-        throw Exception('Voice service returned ${response.statusCode}');
-      }
-      if (requestId != _speechRequestId) return;
 
-      final base64Audio = base64Encode(response.bodyBytes);
-      final audio = html.AudioElement('data:audio/mpeg;base64,$base64Audio');
-      _backendAudio = audio;
-      try {
-        await audio.play();
-        await audio.onEnded.first.timeout(const Duration(seconds: 90));
-      } catch (_) {
-        if (_backendAudio == audio) {
-          _backendAudio = null;
-        }
-        rethrow;
+      final response = await http
+          .post(
+            ttsUrl,
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'text': text, 'language': langCode}),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        // Play audio using HTML audio element
+        final base64Audio = base64Encode(response.bodyBytes);
+        final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
+
+        // Use JavaScript to play audio
+        html.AudioElement audio = html.AudioElement(audioUrl);
+        await audio.play().catchError((_) {
+          // Ignore play errors
+        });
+      } else {
+        throw Exception(
+            'Backend TTS failed with status ${response.statusCode}');
       }
-      if (_backendAudio == audio) {
-        _backendAudio = null;
-      }
+    } catch (_) {
+      rethrow;
+    }
   }
 
   // Returns an ordered list of locale candidates (best -> fallback).
@@ -560,50 +535,92 @@ class _HomePageState extends State<HomePage> {
 
       // Pick the right Noto font based on the selected language script
       String fontAssetRegular = 'assets/fonts/NotoSans-Regular.ttf';
-      String fontAssetBold    = 'assets/fonts/NotoSans-Bold.ttf';
+      String fontAssetBold = 'assets/fonts/NotoSans-Bold.ttf';
       if (['Hindi', 'Marathi', 'Nepali'].contains(lang)) {
         fontAssetRegular = 'assets/fonts/NotoSansDevanagari-Regular.ttf';
-        fontAssetBold    = 'assets/fonts/NotoSansDevanagari-Bold.ttf';
+        fontAssetBold = 'assets/fonts/NotoSansDevanagari-Bold.ttf';
       } else if (lang == 'Tamil') {
         fontAssetRegular = 'assets/fonts/NotoSansTamil-Regular.ttf';
-        fontAssetBold    = 'assets/fonts/NotoSansTamil-Regular.ttf';
+        fontAssetBold = 'assets/fonts/NotoSansTamil-Regular.ttf';
       } else if (['Bengali', 'Assamese'].contains(lang)) {
         fontAssetRegular = 'assets/fonts/NotoSansBengali-Regular.ttf';
-        fontAssetBold    = 'assets/fonts/NotoSansBengali-Regular.ttf';
+        fontAssetBold = 'assets/fonts/NotoSansBengali-Regular.ttf';
       } else if (['Arabic', 'Urdu', 'Persian'].contains(lang)) {
         fontAssetRegular = 'assets/fonts/NotoSansArabic-Regular.ttf';
-        fontAssetBold    = 'assets/fonts/NotoSansArabic-Regular.ttf';
+        fontAssetBold = 'assets/fonts/NotoSansArabic-Regular.ttf';
       }
 
       final fontDataRegular = await rootBundle.load(fontAssetRegular);
-      final fontDataBold    = await rootBundle.load(fontAssetBold);
+      final fontDataBold = await rootBundle.load(fontAssetBold);
       final ttfRegular = pw.Font.ttf(fontDataRegular);
-      final ttfBold    = pw.Font.ttf(fontDataBold);
+      final ttfBold = pw.Font.ttf(fontDataBold);
 
       // Also load NotoSans as fallback for Latin characters in mixed content
-      final fontDataFallback = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+      final fontDataFallback =
+          await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
       final ttfFallback = pw.Font.ttf(fontDataFallback);
 
-      final suggestions = (data['suggestions'] as List? ?? []).map((s) => s.toString()).toList();
-      final translatedSuggestions = (data['translated_suggestions'] as List? ?? []).map((s) => s.toString()).toList();
-      final translatedExplanation = (data['translated_explanation'] ?? '').toString();
-      final diseaseEn    = (data['disease_explanation_en'] ?? '').toString();
-      final solutionEn   = (data['solution_plan_en'] ?? '').toString();
-      final diseaseLang  = (data['disease_explanation_lang'] ?? data['disease_explanation_hi'] ?? '').toString();
-      final solutionLang = (data['solution_plan_lang'] ?? data['solution_plan_hi'] ?? '').toString();
-      final medicalSummary    = (data['medical_summary'] ?? '').toString();
+      final suggestions = (data['suggestions'] as List? ?? [])
+          .map((s) => s.toString())
+          .toList();
+      final translatedSuggestions =
+          (data['translated_suggestions'] as List? ?? [])
+              .map((s) => s.toString())
+              .toList();
+      final translatedExplanation =
+          (data['translated_explanation'] ?? '').toString();
+      final diseaseEn = (data['disease_explanation_en'] ?? '').toString();
+      final solutionEn = (data['solution_plan_en'] ?? '').toString();
+      final diseaseLang = (data['disease_explanation_lang'] ??
+              data['disease_explanation_hi'] ??
+              '')
+          .toString();
+      final solutionLang =
+          (data['solution_plan_lang'] ?? data['solution_plan_hi'] ?? '')
+              .toString();
+      final medicalSummary = (data['medical_summary'] ?? '').toString();
       final simpleExplanation = (data['simple_explanation'] ?? '').toString();
 
       // Each pw.Text must fit in one page — split long body into sentences so
       // MultiPage can break between them. Never wrap text in Container/Padding/Column.
       final List<pw.Widget> items = [];
-      final _bodyStyle  = pw.TextStyle(font: ttfRegular, fontFallback: [ttfFallback], fontSize: 10, lineSpacing: 5);
-      final _titleStyle = pw.TextStyle(font: ttfBold, fontFallback: [ttfFallback], fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red900);
-      final _headerStyle = pw.TextStyle(font: ttfBold, fontFallback: [ttfFallback], fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.red900);
-      final _subHeaderStyle = pw.TextStyle(font: ttfRegular, fontFallback: [ttfFallback], fontSize: 9, color: PdfColors.grey600);
-      final _riskStyle = pw.TextStyle(font: ttfBold, fontFallback: [ttfFallback], fontSize: 10, fontWeight: pw.FontWeight.bold,
-          color: risk > 0.6 ? PdfColors.red800 : risk > 0.3 ? PdfColors.orange800 : PdfColors.green800);
-      final _footerStyle = pw.TextStyle(font: ttfRegular, fontFallback: [ttfFallback], fontSize: 8, color: PdfColors.grey500);
+      final _bodyStyle = pw.TextStyle(
+          font: ttfRegular,
+          fontFallback: [ttfFallback],
+          fontSize: 10,
+          lineSpacing: 5);
+      final _titleStyle = pw.TextStyle(
+          font: ttfBold,
+          fontFallback: [ttfFallback],
+          fontSize: 12,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.red900);
+      final _headerStyle = pw.TextStyle(
+          font: ttfBold,
+          fontFallback: [ttfFallback],
+          fontSize: 16,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.red900);
+      final _subHeaderStyle = pw.TextStyle(
+          font: ttfRegular,
+          fontFallback: [ttfFallback],
+          fontSize: 9,
+          color: PdfColors.grey600);
+      final _riskStyle = pw.TextStyle(
+          font: ttfBold,
+          fontFallback: [ttfFallback],
+          fontSize: 10,
+          fontWeight: pw.FontWeight.bold,
+          color: risk > 0.6
+              ? PdfColors.red800
+              : risk > 0.3
+                  ? PdfColors.orange800
+                  : PdfColors.green800);
+      final _footerStyle = pw.TextStyle(
+          font: ttfRegular,
+          fontFallback: [ttfFallback],
+          fontSize: 8,
+          color: PdfColors.grey500);
 
       // Split on sentence endings or newlines so each chunk is small
       List<String> _splitBody(String body) {
@@ -682,10 +699,14 @@ class _HomePageState extends State<HomePage> {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                    pw.Text('Medical Report Summary', style: _headerStyle),
-                    pw.Text('Generated by MediSimple  \u2022  ${data['report_date'] ?? ""}', style: _subHeaderStyle),
-                  ]),
+                  pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Medical Report Summary', style: _headerStyle),
+                        pw.Text(
+                            'Generated by MediSimple  \u2022  ${data['report_date'] ?? ""}',
+                            style: _subHeaderStyle),
+                      ]),
                   pw.Text('Risk: $riskPct', style: _riskStyle),
                 ],
               ),
@@ -697,7 +718,8 @@ class _HomePageState extends State<HomePage> {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text('MediSimple \u2014 Confidential', style: _footerStyle),
-              pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}', style: _footerStyle),
+              pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}',
+                  style: _footerStyle),
             ],
           ),
           build: (ctx) => items,
@@ -708,13 +730,14 @@ class _HomePageState extends State<HomePage> {
       final blob = html.Blob([bytes], 'application/pdf');
       final url = html.Url.createObjectUrlFromBlob(blob);
       final anchor = html.AnchorElement(href: url)
-        ..setAttribute('download', 'medical_report_${DateTime.now().millisecondsSinceEpoch}.pdf')
+        ..setAttribute('download',
+            'medical_report_${DateTime.now().millisecondsSinceEpoch}.pdf')
         ..click();
       html.Url.revokeObjectUrl(url);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('PDF downloaded successfully'),
+          content: Text('✓ PDF downloaded successfully'),
           backgroundColor: Color(0xFF1565C0),
           behavior: SnackBarBehavior.floating,
           duration: Duration(seconds: 2),
@@ -738,55 +761,63 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isTranslating = true);
 
     try {
-      final url  = _buildApiUrl('/retranslate');
+      final url = _buildApiUrl('/retranslate');
       final body = json.encode({
-        'parsed_data':            _reportData!['parsed_data'] ?? '',
-        'language':               langName,
-        'suggestions':            _reportData!['suggestions'] ?? [],
-        'medical_summary':        _reportData!['medical_summary'] ?? '',
+        'parsed_data': _reportData!['parsed_data'] ?? '',
+        'language': langName,
+        'suggestions': _reportData!['suggestions'] ?? [],
+        'medical_summary': _reportData!['medical_summary'] ?? '',
         'simplified_explanation': _reportData!['simple_explanation'] ?? '',
-        'temporal_analysis':      _reportData!['temporal_analysis'] ?? '',
-        'causal_analysis':        _reportData!['causal_analysis'] ?? '',
-        'risk_probability':       _reportData!['risk_probability'] ?? 0.0,
-        'patient_id':             _reportData!['patient_id'],
-        'report_date':            _reportData!['report_date'] ?? '',
+        'temporal_analysis': _reportData!['temporal_analysis'] ?? '',
+        'causal_analysis': _reportData!['causal_analysis'] ?? '',
+        'risk_probability': _reportData!['risk_probability'] ?? 0.0,
+        'patient_id': _reportData!['patient_id'],
+        'report_date': _reportData!['report_date'] ?? '',
         'disease_explanation_en': _reportData!['disease_explanation_en'] ?? '',
-        'solution_plan_en':       _reportData!['solution_plan_en'] ?? '',
+        'solution_plan_en': _reportData!['solution_plan_en'] ?? '',
       });
 
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: body,
-      ).timeout(
-        const Duration(seconds: 120),
-        onTimeout: () => throw Exception('Translation timed out. Please try again.'),
-      );
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: body,
+          )
+          .timeout(
+            const Duration(seconds: 120),
+            onTimeout: () =>
+                throw Exception('Translation timed out. Please try again.'),
+          );
 
       if (response.statusCode == 200) {
         final newData = json.decode(response.body);
         setState(() {
           _reportData = {
             ..._reportData!,
-            'translated_explanation':   newData['translated_explanation'] ?? '',
-            'translated_suggestions':   newData['translated_suggestions'] ?? [],
-            'disease_explanation_lang': newData['disease_explanation_hi'] ?? newData['disease_explanation_lang'] ?? '',
-            'solution_plan_lang':       newData['solution_plan_hi'] ?? newData['solution_plan_lang'] ?? '',
-            'disease_explanation_hi':   newData['disease_explanation_hi'] ?? '',
-            'solution_plan_hi':         newData['solution_plan_hi'] ?? '',
-            'target_language':          langName,
+            'translated_explanation': newData['translated_explanation'] ?? '',
+            'translated_suggestions': newData['translated_suggestions'] ?? [],
+            'disease_explanation_lang': newData['disease_explanation_hi'] ??
+                newData['disease_explanation_lang'] ??
+                '',
+            'solution_plan_lang': newData['solution_plan_hi'] ??
+                newData['solution_plan_lang'] ??
+                '',
+            'disease_explanation_hi': newData['disease_explanation_hi'] ?? '',
+            'solution_plan_hi': newData['solution_plan_hi'] ?? '',
+            'target_language': langName,
           };
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Translated to $langName'),
+            content: Text('✓ Translated to $langName'),
             backgroundColor: const Color(0xFF2E7D32),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
           ));
         }
       } else {
-        _showError('Translation failed (${response.statusCode}). Please try again.');
+        _showError(
+            'Translation failed (${response.statusCode}). Please try again.');
         setState(() => _selectedLanguage = 'English');
       }
     } catch (e) {
@@ -826,7 +857,8 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('To enable translation:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   SizedBox(height: 6),
                   Text('1. Make sure the backend server is running',
                       style: TextStyle(fontSize: 12)),
@@ -860,7 +892,8 @@ class _HomePageState extends State<HomePage> {
         return StatefulBuilder(
           builder: (context, setSheetState) => SafeArea(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 20, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+              padding: EdgeInsets.fromLTRB(
+                  16, 20, 16, MediaQuery.of(context).viewInsets.bottom + 16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -869,21 +902,25 @@ class _HomePageState extends State<HomePage> {
                   Row(
                     children: [
                       Container(
-                        width: 36, height: 36,
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
                           color: const Color(0xFFFDF0F0),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.language, color: Color(0xFFA01A1A), size: 20),
+                        child: const Icon(Icons.language,
+                            color: Color(0xFFA01A1A), size: 20),
                       ),
                       const SizedBox(width: 12),
                       const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Select Language',
-                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                              style: TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.w700)),
                           Text('Report will be retranslated automatically',
-                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey)),
                         ],
                       ),
                     ],
@@ -901,33 +938,45 @@ class _HomePageState extends State<HomePage> {
                       children: _languages.map((lang) {
                         final isSelected = _selectedLanguage == lang['name'];
                         return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
                           leading: Container(
-                            width: 40, height: 40,
+                            width: 40,
+                            height: 40,
                             decoration: BoxDecoration(
-                              color: isSelected ? const Color(0xFFFDF0F0) : const Color(0xFFF5F5F5),
+                              color: isSelected
+                                  ? const Color(0xFFFDF0F0)
+                                  : const Color(0xFFF5F5F5),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             alignment: Alignment.center,
                             child: Text(lang['native']![0],
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: isSelected ? const Color(0xFFA01A1A) : Colors.grey.shade600,
-                                fontWeight: FontWeight.bold,
-                              )),
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: isSelected
+                                      ? const Color(0xFFA01A1A)
+                                      : Colors.grey.shade600,
+                                  fontWeight: FontWeight.bold,
+                                )),
                           ),
                           title: Text(lang['name']!,
-                            style: TextStyle(
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              color: isSelected ? const Color(0xFFA01A1A) : null,
-                            )),
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color:
+                                    isSelected ? const Color(0xFFA01A1A) : null,
+                              )),
                           subtitle: Text(lang['native']!,
-                            style: const TextStyle(fontSize: 12)),
+                              style: const TextStyle(fontSize: 12)),
                           trailing: isSelected
-                              ? const Icon(Icons.check_circle, color: Color(0xFFA01A1A), size: 22)
+                              ? const Icon(Icons.check_circle,
+                                  color: Color(0xFFA01A1A), size: 22)
                               : null,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          tileColor: isSelected ? const Color(0xFFFDF0F0) : null,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                          tileColor:
+                              isSelected ? const Color(0xFFFDF0F0) : null,
                           onTap: () {
                             final newLang = lang['name']!;
                             Navigator.pop(context);
@@ -938,10 +987,10 @@ class _HomePageState extends State<HomePage> {
                                 if (_reportData != null) {
                                   _reportData = {
                                     ..._reportData!,
-                                    'translated_explanation':   '',
-                                    'translated_suggestions':   [],
+                                    'translated_explanation': '',
+                                    'translated_suggestions': [],
                                     'disease_explanation_lang': '',
-                                    'solution_plan_lang':       '',
+                                    'solution_plan_lang': '',
                                   };
                                 }
                               });
@@ -974,7 +1023,8 @@ class _HomePageState extends State<HomePage> {
       builder: (context) {
         return SafeArea(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 20, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+            padding: EdgeInsets.fromLTRB(
+                16, 20, 16, MediaQuery.of(context).viewInsets.bottom + 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -982,21 +1032,24 @@ class _HomePageState extends State<HomePage> {
                 Row(
                   children: [
                     Container(
-                      width: 36, height: 36,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
                         color: const Color(0xFFFDF0F0),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(Icons.hearing, color: Color(0xFFA01A1A), size: 20),
+                      child: const Icon(Icons.hearing,
+                          color: Color(0xFFA01A1A), size: 20),
                     ),
                     const SizedBox(width: 12),
                     const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Select Voice Model',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                            style: TextStyle(
+                                fontSize: 17, fontWeight: FontWeight.w700)),
                         Text('Choose a smoother voice for playback',
-                          style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                   ],
@@ -1007,7 +1060,8 @@ class _HomePageState extends State<HomePage> {
                 if (_availableVoices.isEmpty)
                   const Padding(
                     padding: EdgeInsets.all(16),
-                    child: Text('No available voices detected on this device.', style: TextStyle(fontSize: 14)),
+                    child: Text('No available voices detected on this device.',
+                        style: TextStyle(fontSize: 14)),
                   )
                 else
                   ConstrainedBox(
@@ -1015,13 +1069,17 @@ class _HomePageState extends State<HomePage> {
                       maxHeight: MediaQuery.of(context).size.height * 0.55,
                     ),
                     child: Builder(builder: (context) {
-                      final targetLangCode = _languageCodeOf(_ttsLocalesFor(_selectedLanguage).first);
+                      final targetLangCode = _languageCodeOf(
+                          _ttsLocalesFor(_selectedLanguage).first);
                       final sortedVoices = [..._availableVoices]..sort((a, b) {
-                        final aMatches = _languageCodeOf(_voiceLocaleOf(a)) == targetLangCode;
-                        final bMatches = _languageCodeOf(_voiceLocaleOf(b)) == targetLangCode;
-                        if (aMatches != bMatches) return aMatches ? -1 : 1;
-                        return _voiceQualityScore(b).compareTo(_voiceQualityScore(a));
-                      });
+                          final aMatches = _languageCodeOf(_voiceLocaleOf(a)) ==
+                              targetLangCode;
+                          final bMatches = _languageCodeOf(_voiceLocaleOf(b)) ==
+                              targetLangCode;
+                          if (aMatches != bMatches) return aMatches ? -1 : 1;
+                          return _voiceQualityScore(b)
+                              .compareTo(_voiceQualityScore(a));
+                        });
                       return ListView.builder(
                         shrinkWrap: true,
                         itemCount: sortedVoices.length,
@@ -1030,23 +1088,32 @@ class _HomePageState extends State<HomePage> {
                           final voiceName = _voiceNameOf(voice);
                           final voiceLocale = _voiceLocaleOf(voice);
                           final isSelected = _selectedVoiceName == voiceName;
-                          final isRecommended = _languageCodeOf(voiceLocale) == targetLangCode &&
-                              _voiceQualityScore(voice) > 0;
+                          final isRecommended =
+                              _languageCodeOf(voiceLocale) == targetLangCode &&
+                                  _voiceQualityScore(voice) > 0;
                           return ListTile(
                             title: Text(voiceName),
                             subtitle: Text(
-                              isRecommended ? '$voiceLocale · Recommended for $_selectedLanguage' : voiceLocale,
+                              isRecommended
+                                  ? '$voiceLocale · Recommended for $_selectedLanguage'
+                                  : voiceLocale,
                               style: isRecommended
-                                  ? const TextStyle(color: Color(0xFFA01A1A), fontWeight: FontWeight.w600)
+                                  ? const TextStyle(
+                                      color: Color(0xFFA01A1A),
+                                      fontWeight: FontWeight.w600)
                                   : null,
                             ),
-                            trailing: isSelected ? const Icon(Icons.check_circle, color: Color(0xFFA01A1A)) : null,
+                            trailing: isSelected
+                                ? const Icon(Icons.check_circle,
+                                    color: Color(0xFFA01A1A))
+                                : null,
                             onTap: () async {
                               Navigator.pop(context);
                               setState(() {
                                 _selectedVoiceName = voiceName;
                               });
-                              await _trySetLanguage(_ttsLocalesFor(_selectedLanguage));
+                              await _trySetLanguage(
+                                  _ttsLocalesFor(_selectedLanguage));
                               await _setTtsVoice(voice);
                               _voiceExplicitlyPinned = true;
                             },
@@ -1068,6 +1135,7 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        elevation: 0,
         title: Row(
           children: [
             ClipRRect(
@@ -1090,16 +1158,18 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-        backgroundColor: const Color(0xFF134E4A),
+        backgroundColor: const Color(0xFF0F766E),
         actions: [
           if (_isTranslating)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8),
               child: Center(
                 child: SizedBox(
-                  width: 18, height: 18,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white,
+                    strokeWidth: 2,
+                    color: Colors.white,
                   ),
                 ),
               ),
@@ -1112,12 +1182,17 @@ class _HomePageState extends State<HomePage> {
                 icon: const Icon(Icons.language, color: Colors.white, size: 18),
                 label: Text(
                   _selectedLanguage,
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
                 ),
                 style: TextButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  backgroundColor: Colors.white.withValues(alpha: 0.14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 ),
               ),
             ),
@@ -1131,6 +1206,7 @@ class _HomePageState extends State<HomePage> {
               _buildUploadTab(),
               _buildExplainTab(),
               _buildSuggestionsTab(),
+              _buildTrendsTab(),
               _buildSettingsTab(),
             ],
           ),
@@ -1140,14 +1216,16 @@ class _HomePageState extends State<HomePage> {
               color: Colors.black.withValues(alpha: 0.45),
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 20, offset: const Offset(0, 8),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
@@ -1155,7 +1233,8 @@ class _HomePageState extends State<HomePage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const SizedBox(
-                        width: 48, height: 48,
+                        width: 48,
+                        height: 48,
                         child: CircularProgressIndicator(
                           strokeWidth: 3,
                           color: Color(0xFF0D9488),
@@ -1165,13 +1244,14 @@ class _HomePageState extends State<HomePage> {
                       Text(
                         'Translating to $_selectedLanguage',
                         style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                           color: Color(0xFF2B2B2B),
                         ),
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Explanation, suggestions, disease\nand solution are being translated.',
+                        'Explanation, suggestions, disease\nand solution are being translated…',
                         style: TextStyle(fontSize: 13, color: Colors.grey),
                         textAlign: TextAlign.center,
                       ),
@@ -1200,8 +1280,14 @@ class _HomePageState extends State<HomePage> {
           ),
           NavigationDestination(
             icon: Icon(Icons.tips_and_updates_outlined, color: Colors.grey),
-            selectedIcon: Icon(Icons.tips_and_updates, color: Color(0xFF0F766E)),
+            selectedIcon:
+                Icon(Icons.tips_and_updates, color: Color(0xFF0F766E)),
             label: 'Suggestions',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.show_chart, color: Colors.grey),
+            selectedIcon: Icon(Icons.show_chart, color: Color(0xFF0F766E)),
+            label: 'Trends',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined, color: Colors.grey),
@@ -1220,10 +1306,11 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFFF8FFFD),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
             ),
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1234,13 +1321,24 @@ class _HomePageState extends State<HomePage> {
                 ),
                 SizedBox(height: 6),
                 Text(
-                  'We provide your report in a language that is easy to understand.',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+                  'Clear explanations, practical suggestions, and a calmer way to review your report.',
+                  style: TextStyle(
+                      fontSize: 13, color: Color(0xFF475569), height: 1.4),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildFeatureBadge(Icons.description_outlined, 'Explain'),
+              _buildFeatureBadge(Icons.lightbulb_outline, 'Suggestions'),
+              _buildFeatureBadge(Icons.show_chart_outlined, 'Risk'),
+            ],
+          ),
+          const SizedBox(height: 18),
           ElevatedButton.icon(
             onPressed: _isLoading ? null : _pickFile,
             icon: const Icon(Icons.upload_file),
@@ -1248,36 +1346,42 @@ class _HomePageState extends State<HomePage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF0D9488),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
-              elevation: 4,
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+              elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: (_reportData == null || _isDownloadingPdf) ? null : _downloadPdf,
+            onPressed: (_reportData == null || _isDownloadingPdf)
+                ? null
+                : _downloadPdf,
             icon: _isDownloadingPdf
                 ? const SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
                   )
                 : const Icon(Icons.download_rounded),
-            label: Text(_isDownloadingPdf ? 'Generating PDF...' : 'Download PDF Report'),
+            label: Text(_isDownloadingPdf
+                ? 'Generating PDF...'
+                : 'Download PDF Report'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1565C0),
+              backgroundColor: const Color(0xFF2563EB),
               foregroundColor: Colors.white,
               disabledBackgroundColor: Colors.grey.shade300,
               disabledForegroundColor: Colors.grey.shade500,
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
-              elevation: 4,
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+              elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 16),
           const Text(
             'Only PDF files are supported. Tap the button above to select and upload your report.',
             textAlign: TextAlign.center,
@@ -1286,7 +1390,7 @@ class _HomePageState extends State<HomePage> {
               fontSize: 14,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 24),
           if (_isLoading)
             const Center(
               child: Column(
@@ -1306,9 +1410,9 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           if (_reportData != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 24),
             _buildResultOverview(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: () => setState(() => _currentIndex = 2),
               icon: const Icon(Icons.tips_and_updates),
@@ -1324,72 +1428,131 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildFeatureBadge(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FFFD),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: const Color(0xFF0F766E), size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildResultOverview() {
     final risk = ((_reportData!['risk_probability'] ?? 0) as num).toDouble();
     final suggestions = _asStringList(_reportData!['translated_suggestions']);
+    final hasHindiGuide = (_reportData!['disease_explanation_hi'] ?? '')
+        .toString()
+        .trim()
+        .isNotEmpty;
     final factors = _causalFactors();
 
-    return Card(
-      color: Colors.white,
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide.none),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Report processed',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FFFD),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.check_circle, color: Color(0xFF0F766E), size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Report processed',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
-                _buildStatusPill(_riskLabel(risk), _riskColor(risk)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: risk.clamp(0, 1).toDouble(),
-              color: _riskColor(risk),
-              backgroundColor: Colors.grey.shade200,
-              minHeight: 6,
-              borderRadius: BorderRadius.circular(99),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Risk probability: ${(risk * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${suggestions.length} improvement steps • ${factors.length} risk factors',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-          ],
-        ),
+              ),
+              _buildStatusPill(_riskLabel(risk), _riskColor(risk)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(
+            value: risk.clamp(0, 1).toDouble(),
+            color: _riskColor(risk),
+            backgroundColor: Colors.grey.shade200,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Risk probability: ${(risk * 100).toStringAsFixed(1)}%',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildInfoChip(Icons.translate,
+                  hasHindiGuide ? 'Hindi guide ready' : 'Guide ready'),
+              _buildInfoChip(Icons.fact_check,
+                  '${suggestions.length} steps'),
+              _buildInfoChip(Icons.analytics, '${factors.length} factors'),
+              _buildInfoChip(Icons.volume_up, 'Voice'),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildStatusPill(String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11),
+        style:
+            TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF0F766E)),
+          const SizedBox(width: 5),
+          Text(label, style: const TextStyle(fontSize: 12)),
+        ],
       ),
     );
   }
 
   List<String> _asStringList(dynamic value) {
     if (value is List) {
-      return value.map((item) => item.toString()).where((item) => item.trim().isNotEmpty).toList();
+      return value
+          .map((item) => item.toString())
+          .where((item) => item.trim().isNotEmpty)
+          .toList();
     }
     return const [];
   }
@@ -1415,7 +1578,8 @@ class _HomePageState extends State<HomePage> {
     if (factors is List) {
       return factors
           .whereType<Map>()
-          .map((item) => item.map((key, value) => MapEntry(key.toString(), value)))
+          .map((item) =>
+              item.map((key, value) => MapEntry(key.toString(), value)))
           .toList();
     }
     return const [];
@@ -1424,7 +1588,8 @@ class _HomePageState extends State<HomePage> {
   String _riskExplanation() {
     final analysis = _causalAnalysis();
     final explanation = analysis['causal_explanation']?.toString();
-    if (explanation != null && explanation.trim().isNotEmpty) return explanation;
+    if (explanation != null && explanation.trim().isNotEmpty)
+      return explanation;
     return 'Upload a report to see why this risk level was calculated.';
   }
 
@@ -1457,8 +1622,9 @@ class _HomePageState extends State<HomePage> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
+                          color: const Color(0xFFF8FFFD),
                           shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFCCFBF1), width: 1.5),
                         ),
                         child: Icon(
                           Icons.description_outlined,
@@ -1507,7 +1673,7 @@ class _HomePageState extends State<HomePage> {
             canSpeak: true,
           ),
           const SizedBox(height: 16),
-          
+
           // Simple Explanation Card
           _buildSectionCard(
             title: 'Simple Explanation',
@@ -1517,14 +1683,17 @@ class _HomePageState extends State<HomePage> {
             isHighlighted: true,
           ),
           const SizedBox(height: 16),
-          
+
           // Translated Card
           _buildSectionCard(
             title: '$_selectedLanguage Explanation',
             icon: Icons.translate,
             content: _isTranslating
                 ? '⏳ Translating to $_selectedLanguage...'
-                : (_reportData!['translated_explanation']?.toString().isNotEmpty == true
+                : (_reportData!['translated_explanation']
+                            ?.toString()
+                            .isNotEmpty ==
+                        true
                     ? _reportData!['translated_explanation']
                     : 'Translation not available. Tap the language button above to retranslate.'),
             canSpeak: !_isTranslating,
@@ -1538,17 +1707,21 @@ class _HomePageState extends State<HomePage> {
                 : null,
           ),
           const SizedBox(height: 16),
-          
+
           // Suggestions Card
           if (_reportData!['suggestions'] != null &&
               (_reportData!['suggestions'] as List).isNotEmpty) ...[
             Builder(builder: (context) {
               final isEnglish = _selectedLanguage == 'English';
-              final translatedSuggestions = _asStringList(_reportData!['translated_suggestions']);
-              final showTranslated = !isEnglish && translatedSuggestions.isNotEmpty;
+              final translatedSuggestions =
+                  _asStringList(_reportData!['translated_suggestions']);
+              final showTranslated =
+                  !isEnglish && translatedSuggestions.isNotEmpty;
               final displayList = showTranslated
                   ? translatedSuggestions
-                  : (_reportData!['suggestions'] as List).map((s) => s.toString()).toList();
+                  : (_reportData!['suggestions'] as List)
+                      .map((s) => s.toString())
+                      .toList();
               final title = showTranslated
                   ? '$_selectedLanguage Suggestions'
                   : 'AI Suggestions';
@@ -1558,7 +1731,8 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
                   if (_isTranslating)
@@ -1569,8 +1743,10 @@ class _HomePageState extends State<HomePage> {
                         child: Row(
                           children: [
                             const SizedBox(
-                              width: 18, height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFA01A1A)),
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Color(0xFFA01A1A)),
                             ),
                             const SizedBox(width: 12),
                             Text('Translating to $_selectedLanguage...',
@@ -1589,11 +1765,13 @@ class _HomePageState extends State<HomePage> {
                           children: [
                             ...displayList.map(
                               (s) => Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Icons.arrow_right, color: Colors.orange),
+                                    const Icon(Icons.arrow_right,
+                                        color: Colors.orange),
                                     const SizedBox(width: 8),
                                     Expanded(child: Text(s)),
                                   ],
@@ -1618,30 +1796,42 @@ class _HomePageState extends State<HomePage> {
       return _buildEmptyState(
         icon: Icons.tips_and_updates_outlined,
         title: 'Upload a report for suggestions',
-        subtitle: 'After processing, this tab will show disease explanation and improvement steps in your selected language.',
+        subtitle:
+            'After processing, this tab will show disease explanation and improvement steps in your selected language.',
       );
     }
 
     const Map<String, Map<String, String>> langLabels = {
-      'Hindi':     {'disease': 'बीमारी की जानकारी',   'solution': 'सुधार के उपाय'},
-      'Bengali':   {'disease': 'রোগের তথ্য',           'solution': 'উন্নতির উপায়'},
-      'Tamil':     {'disease': 'நோய் தகவல்',           'solution': 'மேம்பாட்டு வழிகள்'},
-      'Telugu':    {'disease': 'వ్యాధి సమాచారం',       'solution': 'మెరుగుదల మార్గాలు'},
-      'Marathi':   {'disease': 'आजाराची माहिती',       'solution': 'सुधारणेचे उपाय'},
-      'Gujarati':  {'disease': 'રોગની માહિતી',         'solution': 'સુધારાના ઉપાય'},
-      'Kannada':   {'disease': 'ರೋಗದ ಮಾಹಿತಿ',         'solution': 'ಸುಧಾರಣೆಯ ಮಾರ್ಗಗಳು'},
-      'Malayalam': {'disease': 'രോഗ വിവരം',            'solution': 'മെച്ചപ്പെടുത്തൽ വഴികൾ'},
+      'Hindi': {'disease': 'बीमारी की जानकारी', 'solution': 'सुधार के उपाय'},
+      'Bengali': {'disease': 'রোগের তথ্য', 'solution': 'উন্নতির উপায়'},
+      'Tamil': {'disease': 'நோய் தகவல்', 'solution': 'மேம்பாட்டு வழிகள்'},
+      'Telugu': {'disease': 'వ్యాధి సమాచారం', 'solution': 'మెరుగుదల మార్గాలు'},
+      'Marathi': {'disease': 'आजाराची माहिती', 'solution': 'सुधारणेचे उपाय'},
+      'Gujarati': {'disease': 'રોગની માહિતી', 'solution': 'સુધારાના ઉપાય'},
+      'Kannada': {'disease': 'ರೋಗದ ಮಾಹಿತಿ', 'solution': 'ಸುಧಾರಣೆಯ ಮಾರ್ಗಗಳು'},
+      'Malayalam': {
+        'disease': 'രോഗ വിവരം',
+        'solution': 'മെച്ചപ്പെടുത്തൽ വഴികൾ'
+      },
     };
 
     final labels = langLabels[_selectedLanguage];
     final isEnglish = _selectedLanguage == 'English';
 
-    final diseaseExplanationEn   = (_reportData!['disease_explanation_en'] ?? '').toString();
-    final solutionPlanEn         = (_reportData!['solution_plan_en'] ?? '').toString();
-    final diseaseExplanationLang = (_reportData!['disease_explanation_lang'] ?? _reportData!['disease_explanation_hi'] ?? '').toString();
-    final solutionPlanLang       = (_reportData!['solution_plan_lang'] ?? _reportData!['solution_plan_hi'] ?? '').toString();
-    final translatedSuggestions  = _asStringList(_reportData!['translated_suggestions']);
-    final englishSuggestions     = _asStringList(_reportData!['suggestions']);
+    final diseaseExplanationEn =
+        (_reportData!['disease_explanation_en'] ?? '').toString();
+    final solutionPlanEn = (_reportData!['solution_plan_en'] ?? '').toString();
+    final diseaseExplanationLang = (_reportData!['disease_explanation_lang'] ??
+            _reportData!['disease_explanation_hi'] ??
+            '')
+        .toString();
+    final solutionPlanLang = (_reportData!['solution_plan_lang'] ??
+            _reportData!['solution_plan_hi'] ??
+            '')
+        .toString();
+    final translatedSuggestions =
+        _asStringList(_reportData!['translated_suggestions']);
+    final englishSuggestions = _asStringList(_reportData!['suggestions']);
 
     final translatingText = '⏳ Translating to $_selectedLanguage...';
 
@@ -1659,7 +1849,7 @@ class _HomePageState extends State<HomePage> {
             canSpeak: true,
             isHighlighted: true,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 16),
           _buildSectionCard(
             title: 'Solutions to Improve',
             icon: Icons.healing,
@@ -1668,8 +1858,7 @@ class _HomePageState extends State<HomePage> {
                 : 'Follow a balanced diet, regular activity, sleep, hydration, stress control, and your doctor advice.',
             canSpeak: true,
           ),
-          const SizedBox(height: 10),
-
+          const SizedBox(height: 16),
           if (!isEnglish) ...[
             _buildSectionCard(
               title: labels != null
@@ -1691,7 +1880,7 @@ class _HomePageState extends State<HomePage> {
                     )
                   : null,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 16),
             _buildSectionCard(
               title: labels != null
                   ? '${labels['solution']} ($_selectedLanguage)'
@@ -1714,7 +1903,6 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 16),
           ],
-
           if (_isTranslating)
             Card(
               child: Padding(
@@ -1722,8 +1910,10 @@ class _HomePageState extends State<HomePage> {
                 child: Row(
                   children: [
                     const SizedBox(
-                      width: 18, height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFA01A1A)),
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Color(0xFFA01A1A)),
                     ),
                     const SizedBox(width: 12),
                     Text('Translating checklist to $_selectedLanguage...',
@@ -1739,14 +1929,13 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 8),
             ...translatedSuggestions.asMap().entries.map(
-              (entry) => _buildSuggestionTile(
-                index: entry.key + 1,
-                text: entry.value,
-                color: const Color(0xFFA01A1A),
-              ),
-            ),
+                  (entry) => _buildSuggestionTile(
+                    index: entry.key + 1,
+                    text: entry.value,
+                    color: const Color(0xFFA01A1A),
+                  ),
+                ),
           ],
-
           if (englishSuggestions.isNotEmpty) ...[
             const SizedBox(height: 16),
             ExpansionTile(
@@ -1791,7 +1980,8 @@ class _HomePageState extends State<HomePage> {
               backgroundColor: color.withValues(alpha: 0.14),
               child: Text(
                 '$index',
-                style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    color: color, fontSize: 12, fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(width: 12),
@@ -1845,7 +2035,8 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(height: 8),
                     Text(
                       subtitle,
-                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                      style:
+                          TextStyle(fontSize: 14, color: Colors.grey.shade600),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -1866,74 +2057,52 @@ class _HomePageState extends State<HomePage> {
     bool isHighlighted = false,
     Widget? extraAction,
   }) {
-    final paragraphs = splitIntoReadableParagraphs(content, maxParagraphs: 4);
-    final hasContent = paragraphs.isNotEmpty;
-
-    return Card(
-      color: isHighlighted ? const Color(0xFFFAEAEA) : null,
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide.none),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFAEAEA),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: const Color(0xFFA01A1A), size: 20),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isHighlighted ? const Color(0xFFF8FFFD) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEBF2F0), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                child: Icon(icon, color: const Color(0xFF0F766E), size: 18),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (extraAction != null) extraAction,
-                if (canSpeak)
-                  IconButton(
-                    icon: Icon(
-                      _isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up,
-                      color: const Color(0xFFA01A1A),
-                    ),
-                    onPressed: () {
-                      if (_isSpeaking) {
-                        _stopActiveSpeech();
-                        setState(() {});
-                      } else {
-                        _speak(content);
-                      }
-                    },
-                    tooltip: _isSpeaking ? 'Stop' : 'Speak',
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            if (!hasContent)
-              Text(
-                'No content available yet.',
-                style: TextStyle(fontSize: 14, height: 1.45, color: Colors.grey.shade600),
-              )
-            else
-              ...paragraphs.map((paragraph) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      paragraph,
-                      style: const TextStyle(fontSize: 14, height: 1.5),
-                    ),
-                  )),
-          ],
-        ),
+              ),
+              if (extraAction != null) extraAction,
+              if (canSpeak)
+                IconButton(
+                  icon: const Icon(Icons.volume_up, color: Color(0xFF0F766E), size: 20),
+                  onPressed: () => _speak(content),
+                  tooltip: 'Speak',
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            content,
+            style: const TextStyle(fontSize: 14, height: 1.45, color: Color(0xFF334155)),
+          ),
+        ],
       ),
     );
   }
@@ -1952,7 +2121,8 @@ class _HomePageState extends State<HomePage> {
           // Risk Gauge
           Card(
             elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -1967,13 +2137,15 @@ class _HomePageState extends State<HomePage> {
                           color: _riskColor(risk).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Icon(Icons.monitor_heart, color: _riskColor(risk)),
+                        child:
+                            Icon(Icons.monitor_heart, color: _riskColor(risk)),
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Text(
                           'Risk Assessment',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold),
                         ),
                       ),
                       _buildStatusPill(_riskLabel(risk), _riskColor(risk)),
@@ -1987,14 +2159,15 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 12),
                   Text(
                     _riskExplanation(),
-                    style: TextStyle(fontSize: 13, height: 1.4, color: Colors.grey.shade700),
+                    style: TextStyle(
+                        fontSize: 13, height: 1.4, color: Colors.grey.shade700),
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Temporal Analysis
           const Text(
             'Temporal Analysis',
@@ -2003,7 +2176,7 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 8),
           _buildTemporalAnalysisChart(),
           const SizedBox(height: 16),
-          
+
           const Text(
             'Why This Risk?',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -2030,7 +2203,8 @@ class _HomePageState extends State<HomePage> {
     return Row(
       children: [
         Container(
-          width: 10, height: 10,
+          width: 10,
+          height: 10,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 4),
@@ -2041,9 +2215,14 @@ class _HomePageState extends State<HomePage> {
 
   // ── Colour palette for time-series lines ──────────────────
   static const List<Color> _lineColors = [
-    Color(0xFFA01A1A), Color(0xFF1565C0), Color(0xFF2E7D32),
-    Color(0xFFE65100), Color(0xFF6A1B9A), Color(0xFF00838F),
-    Color(0xFFF9A825), Color(0xFF37474F),
+    Color(0xFFA01A1A),
+    Color(0xFF1565C0),
+    Color(0xFF2E7D32),
+    Color(0xFFE65100),
+    Color(0xFF6A1B9A),
+    Color(0xFF00838F),
+    Color(0xFFF9A825),
+    Color(0xFF37474F),
   ];
 
   Widget _buildTemporalAnalysisChart() {
@@ -2064,20 +2243,23 @@ class _HomePageState extends State<HomePage> {
     Map<String, dynamic> temporal = {};
     try {
       final raw = _reportData!['temporal_analysis'];
-      temporal = raw is String ? json.decode(raw) : Map<String, dynamic>.from(raw);
+      temporal =
+          raw is String ? json.decode(raw) : Map<String, dynamic>.from(raw);
     } catch (_) {}
 
-    final List  trends      = temporal['trends']      is List ? temporal['trends']      as List : [];
-    final List  timeSeries  = temporal['time_series'] is List ? temporal['time_series'] as List : [];
-    final List  alerts      = temporal['alerts']      is List ? temporal['alerts']      as List : [];
-    final String timeAnalysis = temporal['time_analysis']?.toString()    ?? '';
-    final String comparisons  = temporal['comparisons']?.toString()      ?? '';
-    final String pattern      = temporal['pattern_detected']?.toString() ?? '';
+    final List trends =
+        temporal['trends'] is List ? temporal['trends'] as List : [];
+    final List timeSeries =
+        temporal['time_series'] is List ? temporal['time_series'] as List : [];
+    final List alerts =
+        temporal['alerts'] is List ? temporal['alerts'] as List : [];
+    final String timeAnalysis = temporal['time_analysis']?.toString() ?? '';
+    final String comparisons = temporal['comparisons']?.toString() ?? '';
+    final String pattern = temporal['pattern_detected']?.toString() ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-
         // ════════════════════════════════════════════════════
         //  CHART 1 — TIME vs DISEASE (Line chart, multi-series)
         //  X-axis = date labels, Y-axis = actual lab values
@@ -2101,14 +2283,14 @@ class _HomePageState extends State<HomePage> {
         // Summary / comparison card
         if (comparisons.isNotEmpty &&
             comparisons != 'No historical comparison available')
-          _buildInfoCard(Icons.compare_arrows, Colors.indigo,
-              'Trend Summary', comparisons),
+          _buildInfoCard(Icons.compare_arrows, Colors.indigo, 'Trend Summary',
+              comparisons),
 
         if (pattern.isNotEmpty &&
             pattern != 'No persistent pattern identified') ...[
           const SizedBox(height: 8),
-          _buildInfoCard(Icons.pattern, Colors.purple,
-              'Pattern Detected', pattern),
+          _buildInfoCard(
+              Icons.pattern, Colors.purple, 'Pattern Detected', pattern),
         ],
 
         // Alerts
@@ -2142,9 +2324,9 @@ class _HomePageState extends State<HomePage> {
     for (int p = 0; p < timeSeries.length && p < 8; p++) {
       final ts = timeSeries[p];
       if (ts is! Map) continue;
-      final hist   = ts['history'] as List? ?? [];
-      final param  = ts['parameter']?.toString() ?? 'Param ${p+1}';
-      final color  = _lineColors[p % _lineColors.length];
+      final hist = ts['history'] as List? ?? [];
+      final param = ts['parameter']?.toString() ?? 'Param ${p + 1}';
+      final color = _lineColors[p % _lineColors.length];
 
       final List<FlSpot> spots = [];
       for (int i = 0; i < hist.length; i++) {
@@ -2192,8 +2374,7 @@ class _HomePageState extends State<HomePage> {
     minY = (minY - yPad).clamp(0.0, double.infinity);
     maxY = maxY + yPad;
 
-    final double chartWidth =
-        (dateLabels.length * 90.0).clamp(280.0, 800.0);
+    final double chartWidth = (dateLabels.length * 90.0).clamp(280.0, 800.0);
 
     return Card(
       elevation: 2,
@@ -2206,7 +2387,8 @@ class _HomePageState extends State<HomePage> {
             // Title
             Row(children: [
               Container(
-                width: 36, height: 36,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: const Color(0xFFA01A1A).withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(8),
@@ -2220,7 +2402,8 @@ class _HomePageState extends State<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Disease vs Time',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
                     Text('X-axis: Visit dates  |  Y-axis: Lab value',
                         style: TextStyle(fontSize: 10, color: Colors.grey)),
                   ],
@@ -2233,13 +2416,16 @@ class _HomePageState extends State<HomePage> {
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               // Rotated Y-axis label
               SizedBox(
-                width: 20, height: 240,
+                width: 20,
+                height: 240,
                 child: Center(
                   child: RotatedBox(
                     quarterTurns: 3,
                     child: Text('Lab Value',
-                        style: TextStyle(fontSize: 10,
-                            color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade500,
+                            fontWeight: FontWeight.w500)),
                   ),
                 ),
               ),
@@ -2257,8 +2443,10 @@ class _HomePageState extends State<HomePage> {
                       borderData: FlBorderData(
                         show: true,
                         border: Border(
-                          bottom: BorderSide(color: Colors.grey.shade400, width: 1.2),
-                          left:   BorderSide(color: Colors.grey.shade400, width: 1.2),
+                          bottom: BorderSide(
+                              color: Colors.grey.shade400, width: 1.2),
+                          left: BorderSide(
+                              color: Colors.grey.shade400, width: 1.2),
                         ),
                       ),
                       gridData: FlGridData(
@@ -2279,17 +2467,23 @@ class _HomePageState extends State<HomePage> {
                             reservedSize: 44,
                             interval: ((maxY - minY) / 4).clamp(0.1, 999),
                             getTitlesWidget: (v, meta) {
-                              if (v == meta.max || v == meta.min) return const SizedBox();
+                              if (v == meta.max || v == meta.min)
+                                return const SizedBox();
                               return Text(
-                                v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1),
-                                style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                                v % 1 == 0
+                                    ? v.toInt().toString()
+                                    : v.toStringAsFixed(1),
+                                style: TextStyle(
+                                    fontSize: 9, color: Colors.grey.shade600),
                                 textAlign: TextAlign.right,
                               );
                             },
                           ),
                         ),
-                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
                         // X-axis: date labels
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
@@ -2298,12 +2492,14 @@ class _HomePageState extends State<HomePage> {
                             interval: 1,
                             getTitlesWidget: (v, meta) {
                               final idx = v.toInt();
-                              if (idx < 0 || idx >= dateLabels.length) return const SizedBox();
+                              if (idx < 0 || idx >= dateLabels.length)
+                                return const SizedBox();
                               return Padding(
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(dateLabels[idx],
                                     style: const TextStyle(
-                                        fontSize: 9.5, fontWeight: FontWeight.w600,
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w600,
                                         color: Colors.black87)),
                               );
                             },
@@ -2316,12 +2512,18 @@ class _HomePageState extends State<HomePage> {
                           getTooltipItems: (spots) {
                             return spots.map((s) {
                               final idx = s.barIndex;
-                              final name = idx < paramNames.length ? paramNames[idx] : '';
+                              final name = idx < paramNames.length
+                                  ? paramNames[idx]
+                                  : '';
                               final date = s.x.toInt() < dateLabels.length
-                                  ? dateLabels[s.x.toInt()] : '';
+                                  ? dateLabels[s.x.toInt()]
+                                  : '';
                               return LineTooltipItem(
                                 '$name\n$date: ${s.y % 1 == 0 ? s.y.toInt() : s.y.toStringAsFixed(2)}',
-                                const TextStyle(color: Colors.white, fontSize: 11, height: 1.5),
+                                const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    height: 1.5),
                               );
                             }).toList();
                           },
@@ -2338,7 +2540,9 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.only(top: 4, left: 26),
               child: Center(
                 child: Text('Visit / Report Date',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
                         fontWeight: FontWeight.w500)),
               ),
             ),
@@ -2347,10 +2551,14 @@ class _HomePageState extends State<HomePage> {
 
             // Colour legend — one dot per parameter
             Wrap(
-              spacing: 12, runSpacing: 6,
-              children: paramNames.asMap().entries.map((e) =>
-                _legendDot(_lineColors[e.key % _lineColors.length], e.value)
-              ).toList(),
+              spacing: 12,
+              runSpacing: 6,
+              children: paramNames
+                  .asMap()
+                  .entries
+                  .map((e) => _legendDot(
+                      _lineColors[e.key % _lineColors.length], e.value))
+                  .toList(),
             ),
           ],
         ),
@@ -2361,7 +2569,7 @@ class _HomePageState extends State<HomePage> {
   // ── Chart 2: Deviation bar chart (current report) ────────
   Widget _buildDeviationCard(List trends) {
     final List<BarChartGroupData> barGroups = [];
-    final List<String> xLabels    = [];
+    final List<String> xLabels = [];
     final List<String> fullLabels = [];
     double maxAbsDev = 100.0;
 
@@ -2373,18 +2581,21 @@ class _HomePageState extends State<HomePage> {
       if (t['deviation_pct'] != null) {
         dev = (t['deviation_pct'] as num).toDouble().clamp(-300.0, 300.0);
       } else if (t['percent_of_normal'] != null) {
-        dev = ((t['percent_of_normal'] as num).toDouble() - 100.0).clamp(-300.0, 300.0);
+        dev = ((t['percent_of_normal'] as num).toDouble() - 100.0)
+            .clamp(-300.0, 300.0);
       }
       if (dev.abs() > maxAbsDev) maxAbsDev = dev.abs();
 
       final status = (t['status'] ?? 'normal').toString().toLowerCase();
       final Color barColor = dev > 0
-          ? (status == 'critical' ? const Color(0xFF8B0000) : const Color(0xFFA01A1A))
+          ? (status == 'critical'
+              ? const Color(0xFF8B0000)
+              : const Color(0xFFA01A1A))
           : dev < 0
               ? const Color(0xFFE65100)
               : const Color(0xFF2E7D32);
 
-      final full  = t['parameter']?.toString() ?? 'Item ${i+1}';
+      final full = t['parameter']?.toString() ?? 'Item ${i + 1}';
       final short = full.length > 8 ? full.substring(0, 8) : full;
       xLabels.add(short);
       fullLabels.add(full);
@@ -2393,24 +2604,27 @@ class _HomePageState extends State<HomePage> {
         x: i,
         barRods: [
           BarChartRodData(
-            fromY: 0, toY: dev,
+            fromY: 0,
+            toY: dev,
             color: barColor,
             width: trends.length > 16 ? 7 : (trends.length > 10 ? 10 : 14),
             borderRadius: BorderRadius.only(
-              topLeft:     dev >= 0 ? const Radius.circular(4) : Radius.zero,
-              topRight:    dev >= 0 ? const Radius.circular(4) : Radius.zero,
-              bottomLeft:  dev <  0 ? const Radius.circular(4) : Radius.zero,
-              bottomRight: dev <  0 ? const Radius.circular(4) : Radius.zero,
+              topLeft: dev >= 0 ? const Radius.circular(4) : Radius.zero,
+              topRight: dev >= 0 ? const Radius.circular(4) : Radius.zero,
+              bottomLeft: dev < 0 ? const Radius.circular(4) : Radius.zero,
+              bottomRight: dev < 0 ? const Radius.circular(4) : Radius.zero,
             ),
           ),
         ],
       ));
     }
 
-    final double yMax      = (maxAbsDev * 1.2).ceilToDouble();
+    final double yMax = (maxAbsDev * 1.2).ceilToDouble();
     final double yInterval = yMax <= 100 ? 25 : (yMax <= 200 ? 50 : 100);
-    final double barWidth  = trends.length > 16 ? 9.0 : (trends.length > 10 ? 13.0 : 18.0);
-    final double chartWidth = (trends.length * (barWidth + 14)).clamp(300.0, 2000.0);
+    final double barWidth =
+        trends.length > 16 ? 9.0 : (trends.length > 10 ? 13.0 : 18.0);
+    final double chartWidth =
+        (trends.length * (barWidth + 14)).clamp(300.0, 2000.0);
 
     return Card(
       elevation: 2,
@@ -2422,7 +2636,8 @@ class _HomePageState extends State<HomePage> {
           children: [
             Row(children: [
               Container(
-                width: 36, height: 36,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: const Color(0xFFA01A1A).withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(8),
@@ -2436,23 +2651,27 @@ class _HomePageState extends State<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Lab Value Deviation from Normal',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                    Text('Y-axis: percent deviation, where 0 is the normal midpoint and 100 is the range boundary',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    Text(
+                        'Y-axis: % deviation  |  0 = normal midpoint  |  ±100 = range boundary',
                         style: TextStyle(fontSize: 10, color: Colors.grey)),
                   ],
                 ),
               ),
             ]),
             const SizedBox(height: 16),
-
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               SizedBox(
-                width: 20, height: 280,
+                width: 20,
+                height: 280,
                 child: Center(
                   child: RotatedBox(
                     quarterTurns: 3,
                     child: Text('% Deviation from Normal',
-                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500,
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade500,
                             fontWeight: FontWeight.w500)),
                   ),
                 ),
@@ -2462,17 +2681,22 @@ class _HomePageState extends State<HomePage> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: SizedBox(
-                    width: chartWidth, height: 280,
+                    width: chartWidth,
+                    height: 280,
                     child: BarChart(BarChartData(
-                      maxY: yMax, minY: -yMax,
+                      maxY: yMax,
+                      minY: -yMax,
                       alignment: BarChartAlignment.spaceAround,
                       barGroups: barGroups,
                       borderData: FlBorderData(
                         show: true,
                         border: Border(
-                          bottom: BorderSide(color: Colors.grey.shade400, width: 1),
-                          left:   BorderSide(color: Colors.grey.shade400, width: 1),
-                          top:    BorderSide(color: Colors.grey.shade400, width: 1),
+                          bottom:
+                              BorderSide(color: Colors.grey.shade400, width: 1),
+                          left:
+                              BorderSide(color: Colors.grey.shade400, width: 1),
+                          top:
+                              BorderSide(color: Colors.grey.shade400, width: 1),
                         ),
                       ),
                       gridData: FlGridData(
@@ -2481,14 +2705,17 @@ class _HomePageState extends State<HomePage> {
                         horizontalInterval: yInterval,
                         getDrawingHorizontalLine: (value) {
                           if (value == 0) {
-                            return const FlLine(color: Color(0xFFA01A1A), strokeWidth: 2.0);
+                            return const FlLine(
+                                color: Color(0xFFA01A1A), strokeWidth: 2.0);
                           }
                           if (value == 100 || value == -100) {
                             return FlLine(
                                 color: Colors.orange.withValues(alpha: 0.5),
-                                strokeWidth: 1.2, dashArray: [6, 4]);
+                                strokeWidth: 1.2,
+                                dashArray: [6, 4]);
                           }
-                          return FlLine(color: Colors.grey.shade200, strokeWidth: 0.7);
+                          return FlLine(
+                              color: Colors.grey.shade200, strokeWidth: 0.7);
                         },
                       ),
                       titlesData: FlTitlesData(
@@ -2498,37 +2725,45 @@ class _HomePageState extends State<HomePage> {
                             reservedSize: 42,
                             interval: yInterval,
                             getTitlesWidget: (value, meta) {
-                              if (value == meta.max || value == meta.min) return const SizedBox();
+                              if (value == meta.max || value == meta.min)
+                                return const SizedBox();
                               final label = value == 0
                                   ? 'Normal'
                                   : '${value > 0 ? "+" : ""}${value.toInt()}%';
                               return Text(label,
                                   style: TextStyle(
                                     fontSize: 9,
-                                    fontWeight: value == 0 ? FontWeight.bold : FontWeight.normal,
+                                    fontWeight: value == 0
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
                                     color: value == 0
                                         ? const Color(0xFFA01A1A)
                                         : value > 0
-                                            ? const Color(0xFFA01A1A).withValues(alpha: 0.7)
+                                            ? const Color(0xFFA01A1A)
+                                                .withValues(alpha: 0.7)
                                             : Colors.orange.shade700,
                                   ),
                                   textAlign: TextAlign.right);
                             },
                           ),
                         ),
-                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: 48,
                             getTitlesWidget: (value, meta) {
                               final idx = value.toInt();
-                              if (idx < 0 || idx >= xLabels.length) return const SizedBox();
+                              if (idx < 0 || idx >= xLabels.length)
+                                return const SizedBox();
                               return Transform.rotate(
                                 angle: -0.5,
                                 child: Text(xLabels[idx],
-                                    style: const TextStyle(fontSize: 8.5, color: Colors.black87),
+                                    style: const TextStyle(
+                                        fontSize: 8.5, color: Colors.black87),
                                     overflow: TextOverflow.ellipsis),
                               );
                             },
@@ -2541,18 +2776,22 @@ class _HomePageState extends State<HomePage> {
                           getTooltipColor: (_) => const Color(0xFF2B2B2B),
                           getTooltipItem: (group, groupIndex, rod, rodIndex) {
                             if (groupIndex >= trends.length) return null;
-                            final t      = trends[groupIndex] as Map;
-                            final name   = fullLabels[groupIndex];
-                            final val    = t['value']           ?? '—';
-                            final unit   = t['unit']            ?? '';
-                            final status = (t['status'] ?? '—').toString().toUpperCase();
-                            final ref    = t['reference_range'] ?? '—';
-                            final dev    = t['deviation_pct'] != null
+                            final t = trends[groupIndex] as Map;
+                            final name = fullLabels[groupIndex];
+                            final val = t['value'] ?? '—';
+                            final unit = t['unit'] ?? '';
+                            final status =
+                                (t['status'] ?? '—').toString().toUpperCase();
+                            final ref = t['reference_range'] ?? '—';
+                            final dev = t['deviation_pct'] != null
                                 ? '${(t['deviation_pct'] as num) >= 0 ? "+" : ""}${(t['deviation_pct'] as num).toStringAsFixed(1)}% from normal'
                                 : '';
                             return BarTooltipItem(
                               '$name\nValue: $val $unit\nRef: $ref\nStatus: $status\n$dev',
-                              const TextStyle(color: Colors.white, fontSize: 11, height: 1.5),
+                              const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  height: 1.5),
                             );
                           },
                         ),
@@ -2562,18 +2801,17 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ]),
-
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 26),
               child: Center(
                 child: Text('Lab Parameters (scroll to see all)',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
                         fontWeight: FontWeight.w500)),
               ),
             ),
-
             const SizedBox(height: 10),
-
             Wrap(spacing: 14, runSpacing: 6, children: [
               _legendDot(const Color(0xFF2E7D32), 'Normal (0)'),
               _legendDot(const Color(0xFFA01A1A), 'High (+)'),
@@ -2625,7 +2863,9 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                           color: color.withValues(alpha: 0.9))),
                   const SizedBox(height: 4),
                   Text(body, style: const TextStyle(fontSize: 13)),
@@ -2647,7 +2887,8 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red.shade400, size: 20),
+            Icon(Icons.warning_amber_rounded,
+                color: Colors.red.shade400, size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Text(alert,
@@ -2659,11 +2900,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-    Widget _buildRiskFactorTile(Map<String, dynamic> factor) {
+  Widget _buildRiskFactorTile(Map<String, dynamic> factor) {
     final label = factor['factor']?.toString() ?? 'Risk factor';
     final cause = factor['cause']?.toString() ?? '';
     final probability = factor['probability'];
-    final percent = probability is num ? '${(probability * 100).toStringAsFixed(0)}%' : '';
+    final percent =
+        probability is num ? '${(probability * 100).toStringAsFixed(0)}%' : '';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -2679,7 +2921,8 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.amber.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.priority_high, color: Colors.amber.shade800, size: 20),
+              child: Icon(Icons.priority_high,
+                  color: Colors.amber.shade800, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -2691,17 +2934,22 @@ class _HomePageState extends State<HomePage> {
                       Expanded(
                         child: Text(
                           label,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                       ),
-                      if (percent.isNotEmpty) _buildStatusPill(percent, Colors.blueGrey),
+                      if (percent.isNotEmpty)
+                        _buildStatusPill(percent, Colors.blueGrey),
                     ],
                   ),
                   if (cause.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text(
                       cause,
-                      style: TextStyle(fontSize: 13, height: 1.35, color: Colors.grey.shade700),
+                      style: TextStyle(
+                          fontSize: 13,
+                          height: 1.35,
+                          color: Colors.grey.shade700),
                     ),
                   ],
                 ],
@@ -2717,10 +2965,10 @@ class _HomePageState extends State<HomePage> {
     double risk = _reportData != null
         ? (_reportData!['risk_probability'] ?? 0).toDouble()
         : 0.0;
-    
+
     Color riskColor;
     String riskLevel;
-    
+
     if (risk < 0.35) {
       riskColor = Colors.green;
       riskLevel = 'Low';
@@ -2731,7 +2979,7 @@ class _HomePageState extends State<HomePage> {
       riskColor = Colors.red;
       riskLevel = 'High';
     }
-    
+
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -2836,11 +3084,12 @@ class _HomePageState extends State<HomePage> {
               onTap: _showLanguageSelector,
             ),
           ),
-          
+
           // TTS Settings
           Card(
             child: ListTile(
-              leading: const Icon(Icons.record_voice_over, color: Color(0xFFA01A1A)),
+              leading:
+                  const Icon(Icons.record_voice_over, color: Color(0xFFA01A1A)),
               title: const Text('Text-to-Speech'),
               subtitle: Text(_ttsEnabled ? 'Enabled' : 'Disabled'),
               trailing: Switch(
@@ -2868,7 +3117,7 @@ class _HomePageState extends State<HomePage> {
               onTap: _showVoiceSelector,
             ),
           ),
-          
+
           // About
           Card(
             child: ListTile(

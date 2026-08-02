@@ -188,7 +188,6 @@ def translate_all_with_claude(fields: dict, target_language: str) -> dict:
     return translate_all(fields, target_language)
 
 
-
 # ============== State Definitions ==============
 class MedicalReportState(TypedDict, total=False):
     """State for the medical report processing pipeline"""
