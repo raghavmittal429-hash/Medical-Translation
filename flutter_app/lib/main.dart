@@ -714,7 +714,7 @@ class _HomePageState extends State<HomePage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('✓ PDF downloaded successfully'),
+          content: Text('PDF downloaded successfully'),
           backgroundColor: Color(0xFF1565C0),
           behavior: SnackBarBehavior.floating,
           duration: Duration(seconds: 2),
@@ -779,7 +779,7 @@ class _HomePageState extends State<HomePage> {
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('✓ Translated to $langName'),
+            content: Text('Translated to $langName'),
             backgroundColor: const Color(0xFF2E7D32),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
@@ -1171,7 +1171,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Explanation, suggestions, disease\nand solution are being translated…',
+                        'Explanation, suggestions, disease\nand solution are being translated.',
                         style: TextStyle(fontSize: 13, color: Colors.grey),
                         textAlign: TextAlign.center,
                       ),
@@ -1220,38 +1220,27 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: const Color(0xFFE8FFFA),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF99F6E4)),
+              color: const Color(0xFFF8FFFD),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.health_and_safety, color: Color(0xFF0F766E), size: 36),
-                SizedBox(height: 12),
                 Text(
                   'Medical Report Assistant',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 ),
-                SizedBox(height: 8),
-                const Text(
-                  '📋 We provide your report in any language that is easy to understand.',
+                SizedBox(height: 6),
+                Text(
+                  'We provide your report in a language that is easy to understand.',
                   style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(child: _buildFeatureBadge(Icons.description, 'Explain')),
-              const SizedBox(width: 8),
-              Expanded(child: _buildFeatureBadge(Icons.lightbulb_outline, 'Suggestions')),
-            ],
-          ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
           ElevatedButton.icon(
             onPressed: _isLoading ? null : _pickFile,
             icon: const Icon(Icons.upload_file),
@@ -1288,7 +1277,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           const Text(
             'Only PDF files are supported. Tap the button above to select and upload your report.',
             textAlign: TextAlign.center,
@@ -1297,7 +1286,7 @@ class _HomePageState extends State<HomePage> {
               fontSize: 14,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           if (_isLoading)
             const Center(
               child: Column(
@@ -1317,9 +1306,9 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           if (_reportData != null) ...[
-            const SizedBox(height: 24),
-            _buildResultOverview(),
             const SizedBox(height: 12),
+            _buildResultOverview(),
+            const SizedBox(height: 8),
             FilledButton.icon(
               onPressed: () => setState(() => _currentIndex = 2),
               icon: const Icon(Icons.tips_and_updates),
@@ -1335,79 +1324,48 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildFeatureBadge(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE8BEBE)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: const Color(0xFFA01A1A), size: 20),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildResultOverview() {
     final risk = ((_reportData!['risk_probability'] ?? 0) as num).toDouble();
     final suggestions = _asStringList(_reportData!['translated_suggestions']);
-    final hasHindiGuide = (_reportData!['disease_explanation_hi'] ?? '').toString().trim().isNotEmpty;
     final factors = _causalFactors();
 
     return Card(
       color: Colors.white,
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide.none),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.green),
-                const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'Report Processed Successfully',
+                    'Report processed',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
                 _buildStatusPill(_riskLabel(risk), _riskColor(risk)),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             LinearProgressIndicator(
               value: risk.clamp(0, 1).toDouble(),
               color: _riskColor(risk),
               backgroundColor: Colors.grey.shade200,
-              minHeight: 8,
+              minHeight: 6,
               borderRadius: BorderRadius.circular(99),
             ),
             const SizedBox(height: 10),
             Text(
               'Risk probability: ${(risk * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildInfoChip(Icons.translate, hasHindiGuide ? 'Hindi guide ready' : 'Basic guide ready'),
-                _buildInfoChip(Icons.fact_check, '${suggestions.length} improvement steps'),
-                _buildInfoChip(Icons.analytics, '${factors.length} risk factors'),
-                _buildInfoChip(Icons.volume_up, 'Voice support'),
-              ],
+            const SizedBox(height: 8),
+            Text(
+              '${suggestions.length} improvement steps • ${factors.length} risk factors',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ],
         ),
@@ -1417,25 +1375,15 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildStatusPill(String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
+        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11),
       ),
-    );
-  }
-
-  Widget _buildInfoChip(IconData icon, String label) {
-    return Chip(
-      avatar: Icon(icon, size: 16, color: const Color(0xFFA01A1A)),
-      label: Text(label),
-      visualDensity: VisualDensity.compact,
-      side: BorderSide(color: const Color(0xFFE8BEBE)),
-      backgroundColor: const Color(0xFFFAEAEA),
     );
   }
 
@@ -1711,7 +1659,7 @@ class _HomePageState extends State<HomePage> {
             canSpeak: true,
             isHighlighted: true,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           _buildSectionCard(
             title: 'Solutions to Improve',
             icon: Icons.healing,
@@ -1720,7 +1668,7 @@ class _HomePageState extends State<HomePage> {
                 : 'Follow a balanced diet, regular activity, sleep, hydration, stress control, and your doctor advice.',
             canSpeak: true,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
 
           if (!isEnglish) ...[
             _buildSectionCard(
@@ -1743,7 +1691,7 @@ class _HomePageState extends State<HomePage> {
                     )
                   : null,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             _buildSectionCard(
               title: labels != null
                   ? '${labels['solution']} ($_selectedLanguage)'
@@ -1923,10 +1871,10 @@ class _HomePageState extends State<HomePage> {
 
     return Card(
       color: isHighlighted ? const Color(0xFFFAEAEA) : null,
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide.none),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1970,8 +1918,7 @@ class _HomePageState extends State<HomePage> {
                   ),
               ],
             ),
-            const Divider(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             if (!hasContent)
               Text(
                 'No content available yet.',
@@ -2490,7 +2437,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Text('Lab Value Deviation from Normal',
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                    Text('Y-axis: % deviation  |  0 = normal midpoint  |  ±100 = range boundary',
+                    Text('Y-axis: percent deviation, where 0 is the normal midpoint and 100 is the range boundary',
                         style: TextStyle(fontSize: 10, color: Colors.grey)),
                   ],
                 ),
