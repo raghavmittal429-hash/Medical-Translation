@@ -737,7 +737,7 @@ class _HomePageState extends State<HomePage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('✓ PDF downloaded successfully'),
+          content: Text('PDF downloaded successfully'),
           backgroundColor: Color(0xFF1565C0),
           behavior: SnackBarBehavior.floating,
           duration: Duration(seconds: 2),
@@ -809,7 +809,7 @@ class _HomePageState extends State<HomePage> {
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('✓ Translated to $langName'),
+            content: Text('Translated to $langName'),
             backgroundColor: const Color(0xFF2E7D32),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
@@ -1143,19 +1143,15 @@ class _HomePageState extends State<HomePage> {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(2),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.asset(
-                    'assets/images/medisimple_logo.jpg',
-                    width: 42,
-                    height: 42,
-                    fit: BoxFit.cover,
-                  ),
+                child: const Icon(
+                  Icons.medical_services_outlined,
+                  color: Colors.white,
+                  size: 18,
                 ),
               ),
               const SizedBox(width: 12),
@@ -1165,10 +1161,10 @@ class _HomePageState extends State<HomePage> {
                   Text(
                     'MediSimple',
                     style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
                       color: Colors.white,
-                      letterSpacing: -0.3,
+                      letterSpacing: -0.2,
                     ),
                   ),
                   Text(
@@ -1176,7 +1172,7 @@ class _HomePageState extends State<HomePage> {
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.white70,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ],
@@ -1185,15 +1181,9 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
+          color: const Color(0xFF374151),
         ),
-        backgroundColor: const Color(0xFF0F766E),
+        backgroundColor: const Color(0xFF0F172A),
         actions: [
           if (_isTranslating)
             const Padding(
@@ -1298,19 +1288,14 @@ class _HomePageState extends State<HomePage> {
       ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: NavigationBar(
-            selectedIndex: _currentIndex,
-            onDestinationSelected: (index) => setState(() => _currentIndex = index),
-            backgroundColor: Colors.white,
-            elevation: 0,
-            height: 72,
-            indicatorColor: const Color(0xFFCCFBF1),
-            indicatorShape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (index) => setState(() => _currentIndex = index),
+          backgroundColor: const Color(0xFFFAFAFA),
+          elevation: 0,
+          height: 68,
+          indicatorColor: const Color(0xFFF2F4F7),
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.upload_file_outlined, color: Colors.grey),
@@ -1347,35 +1332,25 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF0F766E).withValues(alpha: 0.18),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              color: const Color(0xFFFCFCFD),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(14),
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
                     Icons.medical_information_outlined,
-                    color: Colors.white,
-                    size: 24,
+                    color: Color(0xFF0F766E),
+                    size: 20,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1386,9 +1361,9 @@ class _HomePageState extends State<HomePage> {
                       Text(
                         'Medical Report Assistant',
                         style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF111827),
                           letterSpacing: -0.2,
                         ),
                       ),
@@ -1397,7 +1372,7 @@ class _HomePageState extends State<HomePage> {
                         'Clear explanations, practical suggestions, and a calmer way to review your report.',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.white70,
+                          color: Color(0xFF6B7280),
                           height: 1.4,
                         ),
                       ),
@@ -1423,7 +1398,7 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.upload_file),
             label: const Text('Upload PDF Report'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0D9488),
+              backgroundColor: const Color(0xFF111827),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
               elevation: 0,
@@ -1449,7 +1424,7 @@ class _HomePageState extends State<HomePage> {
                 ? 'Generating PDF...'
                 : 'Download PDF Report'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2563EB),
+              backgroundColor: const Color(0xFF374151),
               foregroundColor: Colors.white,
               disabledBackgroundColor: Colors.grey.shade300,
               disabledForegroundColor: Colors.grey.shade500,
@@ -1511,16 +1486,9 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFFAFAFA),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F766E).withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1542,20 +1510,9 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFF8FFFD), Color(0xFFFFFFFF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFFF8FFFD),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F766E).withValues(alpha: 0.07),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1789,7 +1746,7 @@ class _HomePageState extends State<HomePage> {
             title: '$_selectedLanguage Explanation',
             icon: Icons.translate,
             content: _isTranslating
-                ? '⏳ Translating to $_selectedLanguage...'
+                ? 'Translating to $_selectedLanguage...'
                 : (_reportData!['translated_explanation']
                             ?.toString()
                             .isNotEmpty ==
@@ -1933,7 +1890,7 @@ class _HomePageState extends State<HomePage> {
         _asStringList(_reportData!['translated_suggestions']);
     final englishSuggestions = _asStringList(_reportData!['suggestions']);
 
-    final translatingText = '⏳ Translating to $_selectedLanguage...';
+    final translatingText = 'Translating to $_selectedLanguage...';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
@@ -2115,15 +2072,8 @@ class _HomePageState extends State<HomePage> {
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFFEBF2F0), width: 1),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF0F766E).withValues(alpha: 0.06),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -2177,15 +2127,8 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: isHighlighted ? const Color(0xFFF8FFFD) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFEBF2F0), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
