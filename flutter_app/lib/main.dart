@@ -1241,7 +1241,6 @@ class _HomePageState extends State<HomePage> {
               _buildUploadTab(),
               _buildExplainTab(),
               _buildSuggestionsTab(),
-              _buildTrendsTab(),
               _buildSettingsTab(),
             ],
           ),
@@ -1328,11 +1327,6 @@ class _HomePageState extends State<HomePage> {
                 selectedIcon:
                     Icon(Icons.tips_and_updates, color: Color(0xFF0F766E)),
                 label: 'Suggestions',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.show_chart_outlined, color: Colors.grey),
-                selectedIcon: Icon(Icons.show_chart, color: Color(0xFF0F766E)),
-                label: 'Trends',
               ),
               NavigationDestination(
                 icon: Icon(Icons.settings_outlined, color: Colors.grey),
@@ -1543,13 +1537,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildResultOverview() {
-    final risk = ((_reportData!['risk_probability'] ?? 0) as num).toDouble();
     final suggestions = _asStringList(_reportData!['translated_suggestions']);
-    final hasHindiGuide = (_reportData!['disease_explanation_hi'] ?? '')
-        .toString()
-        .trim()
-        .isNotEmpty;
-    final factors = _causalFactors();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1574,43 +1562,52 @@ class _HomePageState extends State<HomePage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.check_circle, color: Color(0xFF0F766E), size: 18),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Report processed',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.check_circle,
+                  color: Color(0xFF0F766E),
+                  size: 18,
                 ),
               ),
-              _buildStatusPill(_riskLabel(risk), _riskColor(risk)),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Report processed',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Your report summary and guidance are ready.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          LinearProgressIndicator(
-            value: risk.clamp(0, 1).toDouble(),
-            color: _riskColor(risk),
-            backgroundColor: Colors.grey.shade200,
-            minHeight: 6,
-            borderRadius: BorderRadius.circular(99),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Risk probability: ${(risk * 100).toStringAsFixed(1)}%',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildInfoChip(Icons.translate,
-                  hasHindiGuide ? 'Hindi guide ready' : 'Guide ready'),
-              _buildInfoChip(Icons.fact_check,
-                  '${suggestions.length} steps'),
-              _buildInfoChip(Icons.analytics, '${factors.length} factors'),
-              _buildInfoChip(Icons.volume_up, 'Voice'),
-            ],
-          ),
+          if (suggestions.isNotEmpty)
+            Text(
+              'Ready for review',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF64748B),
+              ),
+            ),
         ],
       ),
     );
@@ -2174,6 +2171,8 @@ class _HomePageState extends State<HomePage> {
     bool isHighlighted = false,
     Widget? extraAction,
   }) {
+    final paragraphs = splitIntoReadableParagraphs(content, maxParagraphs: 4);
+
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -2226,10 +2225,25 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            content,
-            style: const TextStyle(fontSize: 14, height: 1.45, color: Color(0xFF334155)),
-          ),
+          if (paragraphs.isEmpty)
+            const Text(
+              'No content available yet.',
+              style: TextStyle(fontSize: 14, height: 1.45, color: Color(0xFF64748B)),
+            )
+          else
+            ...paragraphs.map(
+              (paragraph) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  paragraph,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
