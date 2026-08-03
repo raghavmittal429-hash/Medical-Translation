@@ -1145,7 +1145,7 @@ class _HomePageState extends State<HomePage> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
+                  color: Colors.white.withOpacity(0.16),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -1213,7 +1213,7 @@ class _HomePageState extends State<HomePage> {
                       fontWeight: FontWeight.w600),
                 ),
                 style: TextButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.14),
+                  backgroundColor: Colors.white.withOpacity(0.14),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(999)),
                   padding:
@@ -1237,7 +1237,7 @@ class _HomePageState extends State<HomePage> {
           // Full-screen translating overlay — covers ALL tabs
           if (_isTranslating)
             Container(
-              color: Colors.black.withValues(alpha: 0.45),
+              color: Colors.black.withOpacity(0.45),
               child: Center(
                 child: Container(
                   padding:
@@ -1247,7 +1247,7 @@ class _HomePageState extends State<HomePage> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
+                        color: Colors.black.withOpacity(0.15),
                         blurRadius: 20,
                         offset: const Offset(0, 8),
                       ),
@@ -1574,7 +1574,7 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
@@ -2034,7 +2034,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             CircleAvatar(
               radius: 14,
-              backgroundColor: color.withValues(alpha: 0.14),
+              backgroundColor: color.withOpacity(0.14),
               child: Text(
                 '$index',
                 style: TextStyle(
@@ -2219,7 +2219,7 @@ class _HomePageState extends State<HomePage> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: _riskColor(risk).withValues(alpha: 0.12),
+                          color: _riskColor(risk).withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child:
@@ -2440,7 +2440,7 @@ class _HomePageState extends State<HomePage> {
         ),
         belowBarData: BarAreaData(
           show: true,
-          color: color.withValues(alpha: 0.06),
+          color: color.withOpacity(0.06),
         ),
       ));
     }
@@ -2475,7 +2475,7 @@ class _HomePageState extends State<HomePage> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFA01A1A).withValues(alpha: 0.10),
+                  color: const Color(0xFFA01A1A).withOpacity(0.10),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.show_chart,
@@ -2724,7 +2724,7 @@ class _HomePageState extends State<HomePage> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFA01A1A).withValues(alpha: 0.10),
+                  color: const Color(0xFFA01A1A).withOpacity(0.10),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.bar_chart_rounded,
@@ -2795,7 +2795,7 @@ class _HomePageState extends State<HomePage> {
                           }
                           if (value == 100 || value == -100) {
                             return FlLine(
-                                color: Colors.orange.withValues(alpha: 0.5),
+                                color: Colors.orange.withOpacity(0.5),
                                 strokeWidth: 1.2,
                                 dashArray: [6, 4]);
                           }
@@ -2825,7 +2825,7 @@ class _HomePageState extends State<HomePage> {
                                         ? const Color(0xFFA01A1A)
                                         : value > 0
                                             ? const Color(0xFFA01A1A)
-                                                .withValues(alpha: 0.7)
+                                                .withOpacity(0.7)
                                             : Colors.orange.shade700,
                                   ),
                                   textAlign: TextAlign.right);
@@ -2941,7 +2941,7 @@ class _HomePageState extends State<HomePage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color.withValues(alpha: 0.8), size: 20),
+            Icon(icon, color: color.withOpacity(0.8), size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -2951,7 +2951,7 @@ class _HomePageState extends State<HomePage> {
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: color.withValues(alpha: 0.9))),
+                          color: color.withOpacity(0.9))),
                   const SizedBox(height: 4),
                   Text(body, style: const TextStyle(fontSize: 13)),
                 ],
