@@ -1136,27 +1136,62 @@ class _HomePageState extends State<HomePage> {
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         elevation: 0,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                'assets/images/medisimple_logo.jpg',
-                width: 44,
-                height: 44,
-                fit: BoxFit.cover,
+        toolbarHeight: 82,
+        titleSpacing: 0,
+        title: Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    'assets/images/medisimple_logo.jpg',
+                    width: 42,
+                    height: 42,
+                    fit: BoxFit.cover,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'MediSimple',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 20,
-                color: Colors.white,
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MediSimple',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 19,
+                      color: Colors.white,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  Text(
+                    'Medical report assistant',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
+            ],
+          ),
+        ),
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          ],
+          ),
         ),
         backgroundColor: const Color(0xFF0F766E),
         actions: [
@@ -1262,39 +1297,51 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) => setState(() => _currentIndex = index),
-        backgroundColor: const Color(0xFFFFFFFF),
-        indicatorColor: const Color(0xFFCCFBF1),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.upload_file, color: Colors.grey),
-            selectedIcon: Icon(Icons.upload_file, color: Color(0xFF0F766E)),
-            label: 'Upload',
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: NavigationBar(
+            selectedIndex: _currentIndex,
+            onDestinationSelected: (index) => setState(() => _currentIndex = index),
+            backgroundColor: Colors.white,
+            elevation: 0,
+            height: 72,
+            indicatorColor: const Color(0xFFCCFBF1),
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.upload_file_outlined, color: Colors.grey),
+                selectedIcon: Icon(Icons.upload_file, color: Color(0xFF0F766E)),
+                label: 'Upload',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.description_outlined, color: Colors.grey),
+                selectedIcon: Icon(Icons.description, color: Color(0xFF0F766E)),
+                label: 'Explain',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.tips_and_updates_outlined, color: Colors.grey),
+                selectedIcon:
+                    Icon(Icons.tips_and_updates, color: Color(0xFF0F766E)),
+                label: 'Suggestions',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.show_chart_outlined, color: Colors.grey),
+                selectedIcon: Icon(Icons.show_chart, color: Color(0xFF0F766E)),
+                label: 'Trends',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined, color: Colors.grey),
+                selectedIcon: Icon(Icons.settings, color: Color(0xFF0F766E)),
+                label: 'Settings',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.description_outlined, color: Colors.grey),
-            selectedIcon: Icon(Icons.description, color: Color(0xFF0F766E)),
-            label: 'Explain',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.tips_and_updates_outlined, color: Colors.grey),
-            selectedIcon:
-                Icon(Icons.tips_and_updates, color: Color(0xFF0F766E)),
-            label: 'Suggestions',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.show_chart, color: Colors.grey),
-            selectedIcon: Icon(Icons.show_chart, color: Color(0xFF0F766E)),
-            label: 'Trends',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined, color: Colors.grey),
-            selectedIcon: Icon(Icons.settings, color: Color(0xFF0F766E)),
-            label: 'Settings',
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1306,24 +1353,62 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FFFD),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0F766E).withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-            child: const Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Medical Report Assistant',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.medical_information_outlined,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-                SizedBox(height: 6),
-                Text(
-                  'Clear explanations, practical suggestions, and a calmer way to review your report.',
-                  style: TextStyle(
-                      fontSize: 13, color: Color(0xFF475569), height: 1.4),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Medical Report Assistant',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Clear explanations, practical suggestions, and a calmer way to review your report.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white70,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1432,9 +1517,16 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FFFD),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F766E).withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1460,11 +1552,22 @@ class _HomePageState extends State<HomePage> {
     final factors = _causalFactors();
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FFFD),
-        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF8FFFD), Color(0xFFFFFFFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F766E).withValues(alpha: 0.07),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2011,35 +2114,49 @@ class _HomePageState extends State<HomePage> {
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        shape: BoxShape.circle,
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFEBF2F0), width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F766E).withValues(alpha: 0.06),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
                       ),
-                      child: Icon(icon, size: 64, color: Colors.grey.shade400),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDFA),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(icon, size: 56, color: const Color(0xFF0F766E)),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      subtitle,
-                      style:
-                          TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                      const SizedBox(height: 18),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitle,
+                        style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2058,11 +2175,18 @@ class _HomePageState extends State<HomePage> {
     Widget? extraAction,
   }) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: isHighlighted ? const Color(0xFFF8FFFD) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFEBF2F0), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2070,15 +2194,19 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: [
               Container(
-                width: 34,
-                height: 34,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(10),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFECFDF5), Color(0xFFCCFBF1)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: const Color(0xFF0F766E), size: 18),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   title,
