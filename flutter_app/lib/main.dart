@@ -25,7 +25,60 @@ class MedicalCDSSApp extends StatelessWidget {
     return MaterialApp(
       title: 'MediSimple',
       debugShowCheckedModeBanner: false,
-      theme: MediSimpleTheme.light,
+      theme: ThemeData(
+  useMaterial3: true,
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: const Color(0xFF0F766E),
+    brightness: Brightness.light,
+  ),
+
+  scaffoldBackgroundColor: const Color(0xFFF5F7FA),
+
+  fontFamily: 'Roboto',
+
+  appBarTheme: const AppBarTheme(
+    centerTitle: false,
+    elevation: 0,
+    backgroundColor: Colors.transparent,
+    foregroundColor: Colors.white,
+    titleTextStyle: TextStyle(
+      color: Colors.white,
+      fontSize: 22,
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+
+  cardTheme: CardThemeData(
+    elevation: 3,
+    shadowColor: Colors.black12,
+    color: Colors.white,
+    margin: const EdgeInsets.symmetric(vertical: 8),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+    ),
+  ),
+
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      backgroundColor: const Color(0xFF0F766E),
+      foregroundColor: Colors.white,
+      elevation: 0,
+      minimumSize: const Size(double.infinity, 56),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+    ),
+  ),
+
+  inputDecorationTheme: InputDecorationTheme(
+    filled: true,
+    fillColor: Colors.white,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide.none,
+    ),
+  ),
+),
       home: const HomePage(),
     );
   }
@@ -1134,95 +1187,122 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        elevation: 0,
-        toolbarHeight: 82,
-        titleSpacing: 0,
-        title: Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.16),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.medical_services_outlined,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'MediSimple',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                      color: Colors.white,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  Text(
-                    'Medical report assistant',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        flexibleSpace: Container(
-          color: const Color(0xFF374151),
-        ),
-        backgroundColor: const Color(0xFF0F172A),
-        actions: [
-          if (_isTranslating)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: TextButton.icon(
-                onPressed: _showLanguageSelector,
-                icon: const Icon(Icons.language, color: Colors.white, size: 18),
-                label: Text(
-                  _selectedLanguage,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600),
-                ),
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.white.withOpacity(0.14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                ),
-              ),
-            ),
+     appBar: AppBar(
+  elevation: 0,
+  toolbarHeight: 84,
+  automaticallyImplyLeading: false,
+  backgroundColor: Colors.transparent,
+
+  flexibleSpace: Container(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF0F766E),
+          Color(0xFF14B8A6),
         ],
       ),
+    ),
+  ),
+
+  titleSpacing: 16,
+
+  title: Row(
+    children: [
+      Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.18),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Icon(
+          Icons.medical_services_rounded,
+          color: Colors.white,
+          size: 26,
+        ),
+      ),
+
+      const SizedBox(width: 14),
+
+      const Expanded(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            Text(
+              "MediSimple",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            SizedBox(height: 2),
+
+            Text(
+              "AI Medical Report Assistant",
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  ),
+
+  actions: [
+
+    if (_isTranslating)
+      const Padding(
+        padding: EdgeInsets.only(right: 16),
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            color: Colors.white,
+          ),
+        ),
+      )
+    else
+      Padding(
+        padding: const EdgeInsets.only(right: 16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(.15),
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: TextButton.icon(
+            onPressed: _showLanguageSelector,
+            icon: const Icon(
+              Icons.language,
+              color: Colors.white,
+              size: 18,
+            ),
+            label: Text(
+              _selectedLanguage,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 8,
+              ),
+            ),
+          ),
+        ),
+      ),
+  ],
+),
       body: Stack(
         children: [
           IndexedStack(
@@ -1286,44 +1366,45 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: NavigationBar(
-          selectedIndex: _currentIndex,
-          onDestinationSelected: (index) => setState(() => _currentIndex = index),
-          backgroundColor: const Color(0xFFFAFAFA),
-          elevation: 0,
-          height: 68,
-          indicatorColor: const Color(0xFFF2F4F7),
-          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.upload_file_outlined, color: Colors.grey),
-                selectedIcon: Icon(Icons.upload_file, color: Color(0xFF0F766E)),
-                label: 'Upload',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.description_outlined, color: Colors.grey),
-                selectedIcon: Icon(Icons.description, color: Color(0xFF0F766E)),
-                label: 'Explain',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.tips_and_updates_outlined, color: Colors.grey),
-                selectedIcon:
-                    Icon(Icons.tips_and_updates, color: Color(0xFF0F766E)),
-                label: 'Suggestions',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.settings_outlined, color: Colors.grey),
-                selectedIcon: Icon(Icons.settings, color: Color(0xFF0F766E)),
-                label: 'Settings',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  bottomNavigationBar: NavigationBar(
+  selectedIndex: _selectedIndex,
+  height: 72,
+  backgroundColor: Colors.white,
+  indicatorColor: const Color(0x3314B8A6),
+
+  onDestinationSelected: (index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  },
+
+  destinations: const [
+
+    NavigationDestination(
+      icon: Icon(Icons.home_outlined),
+      selectedIcon: Icon(Icons.home),
+      label: "Home",
+    ),
+
+    NavigationDestination(
+      icon: Icon(Icons.description_outlined),
+      selectedIcon: Icon(Icons.description),
+      label: "Explain",
+    ),
+
+    NavigationDestination(
+      icon: Icon(Icons.lightbulb_outline),
+      selectedIcon: Icon(Icons.lightbulb),
+      label: "Suggestions",
+    ),
+
+    NavigationDestination(
+      icon: Icon(Icons.settings_outlined),
+      selectedIcon: Icon(Icons.settings),
+      label: "Settings",
+    ),
+  ],
+),
 
   Widget _buildUploadTab() {
     return SingleChildScrollView(
