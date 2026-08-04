@@ -28,7 +28,7 @@ class MedicalCDSSApp extends StatelessWidget {
       theme: ThemeData(
   useMaterial3: true,
   colorScheme: ColorScheme.fromSeed(
-    seedColor: const Color(0xFF0F766E),
+    seedColor: const AppColors.navy800,
     brightness: Brightness.light,
   ),
 
@@ -60,7 +60,7 @@ class MedicalCDSSApp extends StatelessWidget {
 
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
-      backgroundColor: const Color(0xFF0F766E),
+      backgroundColor: const AppColors.navy800,
       foregroundColor: Colors.white,
       elevation: 0,
       minimumSize: const Size(double.infinity, 56),
@@ -791,7 +791,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('PDF downloaded successfully'),
-          backgroundColor: Color(0xFF1565C0),
+          backgroundColor: AppColors.navy600,
           behavior: SnackBarBehavior.floating,
           duration: Duration(seconds: 2),
         ));
@@ -888,7 +888,7 @@ class _HomePageState extends State<HomePage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Row(
           children: [
-            Icon(Icons.translate, color: Color(0xFFA01A1A)),
+            Icon(Icons.translate, color: AppColors.navy800),
             SizedBox(width: 8),
             Text('Translation Unavailable'),
           ],
@@ -927,7 +927,7 @@ class _HomePageState extends State<HomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK', style: TextStyle(color: Color(0xFFA01A1A))),
+            child: const Text('OK', style: TextStyle(color: AppColors.navy800)),
           ),
         ],
       ),
@@ -962,7 +962,7 @@ class _HomePageState extends State<HomePage> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.language,
-                            color: Color(0xFFA01A1A), size: 20),
+                            color: AppColors.navy800, size: 20),
                       ),
                       const SizedBox(width: 12),
                       const Column(
@@ -1007,7 +1007,7 @@ class _HomePageState extends State<HomePage> {
                                 style: TextStyle(
                                   fontSize: 18,
                                   color: isSelected
-                                      ? const Color(0xFFA01A1A)
+                                      ? const AppColors.navy800
                                       : Colors.grey.shade600,
                                   fontWeight: FontWeight.bold,
                                 )),
@@ -1018,13 +1018,13 @@ class _HomePageState extends State<HomePage> {
                                     ? FontWeight.w700
                                     : FontWeight.w500,
                                 color:
-                                    isSelected ? const Color(0xFFA01A1A) : null,
+                                    isSelected ? const AppColors.navy800 : null,
                               )),
                           subtitle: Text(lang['native']!,
                               style: const TextStyle(fontSize: 12)),
                           trailing: isSelected
                               ? const Icon(Icons.check_circle,
-                                  color: Color(0xFFA01A1A), size: 22)
+                                  color: AppColors.navy800, size: 22)
                               : null,
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8)),
@@ -1092,7 +1092,7 @@ class _HomePageState extends State<HomePage> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(Icons.hearing,
-                          color: Color(0xFFA01A1A), size: 20),
+                          color: AppColors.navy800, size: 20),
                     ),
                     const SizedBox(width: 12),
                     const Column(
@@ -1152,13 +1152,13 @@ class _HomePageState extends State<HomePage> {
                                   : voiceLocale,
                               style: isRecommended
                                   ? const TextStyle(
-                                      color: Color(0xFFA01A1A),
+                                      color: AppColors.navy800,
                                       fontWeight: FontWeight.w600)
                                   : null,
                             ),
                             trailing: isSelected
                                 ? const Icon(Icons.check_circle,
-                                    color: Color(0xFFA01A1A))
+                                    color: AppColors.navy800)
                                 : null,
                             onTap: () async {
                               Navigator.pop(context);
@@ -1199,8 +1199,8 @@ class _HomePageState extends State<HomePage> {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Color(0xFF0F766E),
-          Color(0xFF14B8A6),
+          AppColors.navy800,
+          AppColors.navy600,
         ],
       ),
     ),
@@ -1341,7 +1341,7 @@ class _HomePageState extends State<HomePage> {
                         height: 48,
                         child: CircularProgressIndicator(
                           strokeWidth: 3,
-                          color: Color(0xFF0D9488),
+                          color: AppColors.navy700,
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -1370,7 +1370,7 @@ class _HomePageState extends State<HomePage> {
   selectedIndex: _selectedIndex,
   height: 72,
   backgroundColor: Colors.white,
-  indicatorColor: const Color(0x3314B8A6),
+  indicatorColor: const AppColors.navy50,
 
   onDestinationSelected: (index) {
     setState(() {
@@ -1410,155 +1410,122 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildUploadTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 48),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Hero card
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFFFCFCFD),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F6),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.medical_information_outlined,
-                    color: Color(0xFF0F766E),
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Medical Report Assistant',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF111827),
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      SizedBox(height: 6),
-                      Text(
-                        'Clear explanations, practical suggestions, and a calmer way to review your report.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF6B7280),
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildFeatureBadge(Icons.description_outlined, 'Explain'),
-              _buildFeatureBadge(Icons.lightbulb_outline, 'Suggestions'),
-              _buildFeatureBadge(Icons.show_chart_outlined, 'Risk'),
-            ],
-          ),
-          const SizedBox(height: 18),
-          ElevatedButton.icon(
-            onPressed: _isLoading ? null : _pickFile,
-            icon: const Icon(Icons.upload_file),
-            label: const Text('Upload PDF Report'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF111827),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              gradient: LinearGradient(
+                colors: [AppColors.navy800, AppColors.navy700],
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(
+                color: AppColors.navy900.withValues(alpha: 0.25),
+                blurRadius: 20, offset: const Offset(0, 8),
+              )],
             ),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: (_reportData == null || _isDownloadingPdf)
-                ? null
-                : _downloadPdf,
-            icon: _isDownloadingPdf
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.download_rounded),
-            label: Text(_isDownloadingPdf
-                ? 'Generating PDF...'
-                : 'Download PDF Report'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF374151),
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: Colors.grey.shade300,
-              disabledForegroundColor: Colors.grey.shade500,
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            child: Row(children: [
+              Container(
+                width: 52, height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.medical_services_rounded, color: Colors.white, size: 26),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Only PDF files are supported. Tap the button above to select and upload your report.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (_isLoading)
-            const Center(
-              child: Column(
+              const SizedBox(width: 14),
+              const Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircularProgressIndicator(
-                    color: Color(0xFFA01A1A),
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Processing Report...',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 14,
-                    ),
-                  ),
+                  Text('MediSimple', style: TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.w800,
+                    color: Colors.white, letterSpacing: -0.4,
+                  )),
+                  SizedBox(height: 4),
+                  Text('AI Medical Report Assistant',
+                    style: TextStyle(fontSize: 12, color: Colors.white70)),
                 ],
+              )),
+            ]),
+          ),
+          const SizedBox(height: 20),
+          // Upload zone
+          GestureDetector(
+            onTap: _isLoading ? null : _pickFile,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _isLoading ? AppColors.navy200 : AppColors.navy800,
+                  width: 1.5,
+                ),
+                boxShadow: [BoxShadow(
+                  color: AppColors.navy800.withValues(alpha: 0.06),
+                  blurRadius: 12, offset: const Offset(0, 4),
+                )],
               ),
+              child: _isLoading
+                  ? Column(children: [
+                      const SizedBox(width: 36, height: 36,
+                        child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.navy800)),
+                      const SizedBox(height: 14),
+                      const Text('Analysing your report…',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.navy800)),
+                      const SizedBox(height: 6),
+                      Text(_loadingMessage.isNotEmpty ? _loadingMessage : 'This usually takes 20–40 seconds',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    ])
+                  : Column(children: [
+                      Container(width: 64, height: 64,
+                        decoration: const BoxDecoration(color: AppColors.navy50, shape: BoxShape.circle),
+                        child: const Icon(Icons.cloud_upload_rounded, color: AppColors.navy800, size: 30)),
+                      const SizedBox(height: 14),
+                      const Text('Upload PDF Report',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      const SizedBox(height: 6),
+                      const Text('Lab reports · Prescriptions · Clinical notes',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 11),
+                        decoration: BoxDecoration(color: AppColors.navy800, borderRadius: BorderRadius.circular(8)),
+                        child: const Text('Choose File',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                      ),
+                    ]),
             ),
+          ),
+          const SizedBox(height: 20),
           if (_reportData != null) ...[
-            const SizedBox(height: 24),
             _buildResultOverview(),
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () => setState(() => _currentIndex = 2),
-              icon: const Icon(Icons.tips_and_updates),
-              label: const Text('Open Suggestions'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFA01A1A),
-                foregroundColor: Colors.white,
-              ),
-            ),
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(
+                onPressed: _isDownloadingPdf ? null : _downloadPdf,
+                icon: _isDownloadingPdf
+                    ? const SizedBox(width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.navy800))
+                    : const Icon(Icons.download_rounded, size: 18),
+                label: Text(_isDownloadingPdf ? 'Generating…' : 'Download PDF'),
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: ElevatedButton.icon(
+                onPressed: () => setState(() => _currentIndex = 2),
+                icon: const Icon(Icons.tips_and_updates_rounded, size: 18),
+                label: const Text('Suggestions'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.gold600,
+                  foregroundColor: Colors.white,
+                ),
+              )),
+            ]),
           ],
         ],
       ),
@@ -1576,7 +1543,7 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: const Color(0xFF0F766E), size: 16),
+          Icon(icon, color: const AppColors.navy800, size: 16),
           const SizedBox(width: 6),
           Text(
             label,
@@ -1593,7 +1560,7 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FFFD),
+        color: const AppColors.navy50,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
       ),
@@ -1610,7 +1577,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 child: const Icon(
                   Icons.check_circle,
-                  color: Color(0xFF0F766E),
+                  color: AppColors.navy800,
                   size: 18,
                 ),
               ),
@@ -1631,7 +1598,7 @@ class _HomePageState extends State<HomePage> {
                       'Your report summary and guidance are ready.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -1645,7 +1612,7 @@ class _HomePageState extends State<HomePage> {
               'Ready for review',
               style: const TextStyle(
                 fontSize: 12,
-                color: Color(0xFF64748B),
+                color: AppColors.textSecondary,
               ),
             ),
         ],
@@ -1679,7 +1646,7 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF0F766E)),
+          Icon(icon, size: 14, color: const AppColors.navy800),
           const SizedBox(width: 5),
           Text(label, style: const TextStyle(fontSize: 12)),
         ],
@@ -1715,7 +1682,7 @@ class _HomePageState extends State<HomePage> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FFFD),
+                          color: const AppColors.navy50,
                           shape: BoxShape.circle,
                           border: Border.all(color: const Color(0xFFCCFBF1), width: 1.5),
                         ),
@@ -1794,7 +1761,7 @@ class _HomePageState extends State<HomePage> {
                 ? IconButton(
                     icon: const Icon(Icons.refresh, size: 20),
                     tooltip: 'Retranslate',
-                    color: const Color(0xFFA01A1A),
+                    color: const AppColors.navy800,
                     onPressed: () => _retranslate(_selectedLanguage),
                   )
                 : null,
@@ -1839,7 +1806,7 @@ class _HomePageState extends State<HomePage> {
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Color(0xFFA01A1A)),
+                                  strokeWidth: 2, color: AppColors.navy800),
                             ),
                             const SizedBox(width: 12),
                             Text('Translating to $_selectedLanguage...',
@@ -1968,7 +1935,7 @@ class _HomePageState extends State<HomePage> {
                   ? IconButton(
                       icon: const Icon(Icons.refresh, size: 20),
                       tooltip: 'Retranslate',
-                      color: const Color(0xFFA01A1A),
+                      color: const AppColors.navy800,
                       onPressed: () => _retranslate(_selectedLanguage),
                     )
                   : null,
@@ -1989,7 +1956,7 @@ class _HomePageState extends State<HomePage> {
                   ? IconButton(
                       icon: const Icon(Icons.refresh, size: 20),
                       tooltip: 'Retranslate',
-                      color: const Color(0xFFA01A1A),
+                      color: const AppColors.navy800,
                       onPressed: () => _retranslate(_selectedLanguage),
                     )
                   : null,
@@ -2006,7 +1973,7 @@ class _HomePageState extends State<HomePage> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Color(0xFFA01A1A)),
+                          strokeWidth: 2, color: AppColors.navy800),
                     ),
                     const SizedBox(width: 12),
                     Text('Translating checklist to $_selectedLanguage...',
@@ -2025,7 +1992,7 @@ class _HomePageState extends State<HomePage> {
                   (entry) => _buildSuggestionTile(
                     index: entry.key + 1,
                     text: entry.value,
-                    color: const Color(0xFFA01A1A),
+                    color: const AppColors.navy800,
                   ),
                 ),
           ],
@@ -2033,7 +2000,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 16),
             ExpansionTile(
               tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-              leading: const Icon(Icons.translate, color: Color(0xFFA01A1A)),
+              leading: const Icon(Icons.translate, color: AppColors.navy800),
               title: const Text('Original AI Suggestions (English)'),
               children: englishSuggestions
                   .map(
@@ -2120,7 +2087,7 @@ class _HomePageState extends State<HomePage> {
                           color: const Color(0xFFF0FDFA),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(icon, size: 56, color: const Color(0xFF0F766E)),
+                        child: Icon(icon, size: 56, color: const AppColors.navy800),
                       ),
                       const SizedBox(height: 18),
                       Text(
@@ -2157,81 +2124,83 @@ class _HomePageState extends State<HomePage> {
     bool isHighlighted = false,
     Widget? extraAction,
   }) {
-    // Split content into readable paragraphs for display
     final paragraphs = content.trim().isEmpty
         ? <String>[]
-        : content
-            .split(RegExp(r'\n\s*\n+'))
-            .map((p) => p.trim())
-            .where((p) => p.isNotEmpty)
-            .take(6)
-            .toList();
-    final hasContent = paragraphs.isNotEmpty;
+        : content.split(RegExp(r'\n\s*\n+')).map((p) => p.trim())
+            .where((p) => p.isNotEmpty).take(6).toList();
+
     return Container(
-      padding: const EdgeInsets.all(15),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: isHighlighted ? const Color(0xFFF8FFFD) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFEBF2F0), width: 1),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border(
+          left: BorderSide(
+            color: isHighlighted ? AppColors.gold600 : AppColors.navy800,
+            width: 3,
+          ),
+          top:    const BorderSide(color: AppColors.border),
+          right:  const BorderSide(color: AppColors.border),
+          bottom: const BorderSide(color: AppColors.border),
+        ),
+        boxShadow: [BoxShadow(
+          color: AppColors.navy800.withValues(alpha: 0.05),
+          blurRadius: 8, offset: const Offset(0, 2),
+        )],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 34, height: 34,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFECFDF5), Color(0xFFCCFBF1)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
+                  color: isHighlighted ? AppColors.gold100 : AppColors.navy50,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, color: const Color(0xFF0F766E), size: 18),
+                child: Icon(icon,
+                  color: isHighlighted ? AppColors.gold600 : AppColors.navy800,
+                  size: 18),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
+              Expanded(child: Text(title,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary))),
               if (extraAction != null) extraAction,
               if (canSpeak)
-                IconButton(
-                  icon: const Icon(Icons.volume_up, color: Color(0xFF0F766E), size: 20),
-                  onPressed: () => _speak(content),
-                  tooltip: 'Speak',
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (paragraphs.isEmpty)
-            const Text(
-              'No content available yet.',
-              style: TextStyle(fontSize: 14, height: 1.45, color: Color(0xFF64748B)),
-            )
-          else
-            ...paragraphs.map(
-              (paragraph) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  paragraph,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: Color(0xFF334155),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _speak(content),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppColors.navy50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.volume_up_rounded,
+                          color: AppColors.navy800, size: 18),
+                    ),
                   ),
                 ),
-              ),
-            ),
-        ],
+            ]),
+            const SizedBox(height: 4),
+            const Divider(height: 16),
+            if (paragraphs.isEmpty)
+              const Text('No content available yet.',
+                style: TextStyle(fontSize: 14, height: 1.45,
+                    color: AppColors.textSecondary))
+            else
+              ...paragraphs.map((p) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(p, style: const TextStyle(
+                  fontSize: 14, height: 1.55, color: AppColors.textPrimary)),
+              )),
+          ],
+        ),
       ),
     );
   }
@@ -2285,7 +2254,7 @@ class _HomePageState extends State<HomePage> {
           ),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.language, color: Color(0xFFA01A1A)),
+              leading: const Icon(Icons.language, color: AppColors.navy800),
               title: const Text('Output Language'),
               subtitle: Text(_selectedLanguage),
               trailing: const Icon(Icons.chevron_right),
@@ -2297,7 +2266,7 @@ class _HomePageState extends State<HomePage> {
           Card(
             child: ListTile(
               leading:
-                  const Icon(Icons.record_voice_over, color: Color(0xFFA01A1A)),
+                  const Icon(Icons.record_voice_over, color: AppColors.navy800),
               title: const Text('Text-to-Speech'),
               subtitle: Text(_ttsEnabled ? 'Enabled' : 'Disabled'),
               trailing: Switch(
@@ -2312,13 +2281,13 @@ class _HomePageState extends State<HomePage> {
                     await _tts.stop();
                   }
                 },
-                activeThumbColor: const Color(0xFFA01A1A),
+                activeThumbColor: const AppColors.navy800,
               ),
             ),
           ),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.headphones, color: Color(0xFFA01A1A)),
+              leading: const Icon(Icons.headphones, color: AppColors.navy800),
               title: const Text('Voice Model'),
               subtitle: Text(_selectedVoiceName ?? 'Default'),
               trailing: const Icon(Icons.chevron_right),
@@ -2329,7 +2298,7 @@ class _HomePageState extends State<HomePage> {
           // About
           Card(
             child: ListTile(
-              leading: const Icon(Icons.info_outline, color: Color(0xFFA01A1A)),
+              leading: const Icon(Icons.info_outline, color: AppColors.navy800),
               title: const Text('About'),
               subtitle: const Text('System information'),
               trailing: const Icon(Icons.chevron_right),
