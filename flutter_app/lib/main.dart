@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -92,7 +91,13 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  // FIX 1: unified index for both IndexedStack and NavigationBar
   int _currentIndex = 0;
+  int get _selectedIndex => _currentIndex;
+
+  // FIX 2: added missing _loadingMessage variable
+  String _loadingMessage = '';
+
   FlutterTts _tts = FlutterTts();
 
   // Data state
@@ -125,8 +130,6 @@ class _HomePageState extends State<HomePage> {
     _initTts();
   }
 
-  // Tracks whether the underlying engine currently has an explicit voice
-  // pinned via setVoice(), purely so we can skip redundant clear calls.
   bool _voiceExplicitlyPinned = false;
 
   Future<void> _initTts() async {
@@ -137,10 +140,6 @@ class _HomePageState extends State<HomePage> {
     await _applyVoiceForLanguage(_selectedLanguage);
   }
 
-  // Browsers (Chrome in particular) load the speechSynthesis voice list
-  // asynchronously, so a getVoices() call made too early can return an
-  // empty list even though voices are available a moment later. Retry a
-  // few times before giving up.
   Future<void> _loadAvailableVoices({int retries = 4}) async {
     try {
       for (var attempt = 0; attempt <= retries; attempt++) {
@@ -159,7 +158,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Returns just the language portion of a locale, e.g. "hi-IN" -> "hi".
   String _languageCodeOf(String locale) {
     final parts = locale.split(RegExp(r'[-_]'));
     return parts.isNotEmpty ? parts.first.toLowerCase() : locale.toLowerCase();
@@ -192,16 +190,12 @@ class _HomePageState extends State<HomePage> {
     final targetLocale = targetLocales.first;
     final targetLangCode = _languageCodeOf(targetLocale);
 
-    // Re-check available voices every time: some platforms finish loading
-    // them after first launch, and we want the freshest list when the
-    // user switches languages.
     if (_availableVoices.isEmpty) {
       await _loadAvailableVoices();
     }
 
     final localeMatches = _availableVoices.where((voice) {
       final voiceLocale = _voiceLocaleOf(voice).toLowerCase();
-      // match any of the candidate locales or the base language code
       return targetLocales.map((e) => e.toLowerCase()).contains(voiceLocale) ||
           _languageCodeOf(voiceLocale) == targetLangCode;
     }).toList();
@@ -209,23 +203,11 @@ class _HomePageState extends State<HomePage> {
     await _trySetLanguage(targetLocales);
 
     if (localeMatches.isNotEmpty) {
-      // A genuine voice exists for this language: pick the smoothest
-      // sounding one and pin it explicitly.
       final bestVoice = _preferredVoice(localeMatches);
       _selectedVoiceName = _voiceNameOf(bestVoice);
       await _setTtsVoice(bestVoice);
       _voiceExplicitlyPinned = true;
     } else if (_voiceExplicitlyPinned) {
-      // No voice exists for this language, but a voice IS currently
-      // pinned from a previous language. On the stock flutter_tts web
-      // engine there was no way to unpin it, so the engine kept speaking
-      // every new language in the *old* voice — usually mispronouncing
-      // it or producing no audible sound at all for scripts that voice
-      // can't read, no matter what setLanguage() was called with
-      // afterwards. We use the patched vendor/flutter_tts package (see
-      // pubspec.yaml dependency_overrides) which clears the pinned voice
-      // when given empty name/locale, letting setLanguage() actually
-      // take effect again.
       await _clearTtsVoice();
       _selectedVoiceName = null;
       _voiceExplicitlyPinned = false;
@@ -252,11 +234,6 @@ class _HomePageState extends State<HomePage> {
     return voice.toString();
   }
 
-  // Scores a voice by how natural/smooth it's likely to sound, based on
-  // common naming conventions used by OS and browser TTS engines. Higher
-  // is smoother. This lets us automatically prefer modern neural/online
-  // voices over old robotic "compact"/eSpeak-style ones whenever both are
-  // available for the same language.
   int _voiceQualityScore(dynamic voice) {
     final name = _voiceNameOf(voice).toLowerCase();
     var score = 0;
@@ -294,20 +271,13 @@ class _HomePageState extends State<HomePage> {
           await _tts.setVoice(settings);
         }
       }
-    } catch (_) {
-      // Ignore voice selection failure; fallback to language-only mode.
-    }
+    } catch (_) {}
   }
 
-  // Explicitly unpins any previously selected voice. Relies on the patch
-  // in vendor/flutter_tts/lib/flutter_tts_web.dart that treats empty
-  // name/locale as "clear the pinned voice" instead of a no-op.
   Future<void> _clearTtsVoice() async {
     try {
       await _tts.setVoice({'name': '', 'locale': ''});
-    } catch (_) {
-      // Ignore; worst case the previous voice stays pinned.
-    }
+    } catch (_) {}
   }
 
   Future<void> _setTtsLanguage(String locale) async {
@@ -320,8 +290,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Base URL is injected at build time via --dart-define=API_BASE_URL=https://your-app.up.railway.app
-  // Falls back to localhost for local development
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'https://medical-translation-5.onrender.com',
@@ -357,6 +325,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _isLoading = true;
       _reportData = null;
+      _loadingMessage = '';
     });
 
     final apiUrl = _buildApiUrl('/upload');
@@ -411,7 +380,6 @@ class _HomePageState extends State<HomePage> {
     }
     _currentJobId = jobId;
 
-    // Poll every 2 seconds for job status
     _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       try {
         final statusUrl = _buildApiUrl('/job/$jobId');
@@ -434,6 +402,11 @@ class _HomePageState extends State<HomePage> {
             });
             _pollingTimer?.cancel();
             _currentJobId = null;
+          } else if (statusData['message'] != null) {
+            // FIX 3: update loading message from polling status
+            setState(() {
+              _loadingMessage = statusData['message'].toString();
+            });
           }
         } else {
           _showError('Error checking job status');
@@ -465,27 +438,20 @@ class _HomePageState extends State<HomePage> {
       try {
         await _speakViaBackend(text, _selectedLanguage);
         return;
-      } catch (_) {
-        // If backend TTS is unavailable, still give device TTS one chance.
-      }
+      } catch (_) {}
     }
 
     try {
-      // Try device TTS first
       await _tts.speak(text).timeout(const Duration(seconds: 90));
     } catch (e) {
-      // Device TTS failed; fall back to backend TTS if available
       if (_selectedLanguage != 'English') {
         try {
           await _speakViaBackend(text, _selectedLanguage);
-        } catch (_) {
-          // Silently fail if backend TTS also fails
-        }
+        } catch (_) {}
       }
     }
   }
 
-  // Fall back to backend TTS endpoint for languages without device voices
   Future<void> _speakViaBackend(String text, String language) async {
     try {
       final langCode = _languageCodeFor(language);
@@ -500,25 +466,18 @@ class _HomePageState extends State<HomePage> {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
-        // Play audio using HTML audio element
         final base64Audio = base64Encode(response.bodyBytes);
         final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
-
-        // Use JavaScript to play audio
         html.AudioElement audio = html.AudioElement(audioUrl);
-        await audio.play().catchError((_) {
-          // Ignore play errors
-        });
+        await audio.play().catchError((_) {});
       } else {
-        throw Exception(
-            'Backend TTS failed with status ${response.statusCode}');
+        throw Exception('Backend TTS failed with status ${response.statusCode}');
       }
     } catch (_) {
       rethrow;
     }
   }
 
-  // Returns an ordered list of locale candidates (best -> fallback).
   List<String> _ttsLocalesFor(String language) {
     const localeMap = {
       'English': ['en-US', 'en-GB', 'en'],
@@ -534,17 +493,13 @@ class _HomePageState extends State<HomePage> {
     return List<String>.from(localeMap[language] ?? ['en-US']);
   }
 
-  // Try setting the TTS language from a list of candidates until one succeeds.
   Future<void> _trySetLanguage(List<String> locales) async {
     for (final locale in locales) {
       try {
         await _tts.setLanguage(locale);
         return;
-      } catch (_) {
-        // try next
-      }
+      } catch (_) {}
     }
-    // fallback
     try {
       await _tts.setLanguage('en-US');
     } catch (_) {}
@@ -586,7 +541,6 @@ class _HomePageState extends State<HomePage> {
       final lang = _selectedLanguage;
       final isEnglish = lang == 'English';
 
-      // Pick the right Noto font based on the selected language script
       String fontAssetRegular = 'assets/fonts/NotoSans-Regular.ttf';
       String fontAssetBold = 'assets/fonts/NotoSans-Bold.ttf';
       if (['Hindi', 'Marathi', 'Nepali'].contains(lang)) {
@@ -608,7 +562,6 @@ class _HomePageState extends State<HomePage> {
       final ttfRegular = pw.Font.ttf(fontDataRegular);
       final ttfBold = pw.Font.ttf(fontDataBold);
 
-      // Also load NotoSans as fallback for Latin characters in mixed content
       final fontDataFallback =
           await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
       final ttfFallback = pw.Font.ttf(fontDataFallback);
@@ -634,8 +587,6 @@ class _HomePageState extends State<HomePage> {
       final medicalSummary = (data['medical_summary'] ?? '').toString();
       final simpleExplanation = (data['simple_explanation'] ?? '').toString();
 
-      // Each pw.Text must fit in one page — split long body into sentences so
-      // MultiPage can break between them. Never wrap text in Container/Padding/Column.
       final List<pw.Widget> items = [];
       final _bodyStyle = pw.TextStyle(
           font: ttfRegular,
@@ -675,14 +626,12 @@ class _HomePageState extends State<HomePage> {
           fontSize: 8,
           color: PdfColors.grey500);
 
-      // Split on sentence endings or newlines so each chunk is small
       List<String> _splitBody(String body) {
         final raw = body.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
         final List<String> parts = [];
         for (final para in raw.split('\n')) {
           final p = para.trim();
           if (p.isEmpty) continue;
-          // Further split long paragraphs on '. ' boundaries (~150 chars max each)
           if (p.length <= 150) {
             parts.add(p);
           } else {
@@ -715,7 +664,6 @@ class _HomePageState extends State<HomePage> {
         items.add(pw.Text(title, style: _titleStyle));
         items.add(pw.SizedBox(height: 3));
         for (final b in bullets) {
-          // Each bullet may itself be long — split it too
           final chunks = _splitBody(b);
           items.add(pw.Text('  \u2022  ${chunks.first}', style: _bodyStyle));
           for (final extra in chunks.skip(1)) {
@@ -779,7 +727,6 @@ class _HomePageState extends State<HomePage> {
         ),
       );
       final bytes = await pdf.save();
-      // ignore: avoid_web_libraries_in_flutter
       final blob = html.Blob([bytes], 'application/pdf');
       final url = html.Url.createObjectUrlFromBlob(blob);
       final anchor = html.AnchorElement(href: url)
@@ -951,7 +898,6 @@ class _HomePageState extends State<HomePage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
                   Row(
                     children: [
                       Container(
@@ -981,7 +927,6 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 16),
                   const Divider(height: 1),
                   const SizedBox(height: 4),
-                  // Scrollable language list
                   ConstrainedBox(
                     constraints: BoxConstraints(
                       maxHeight: MediaQuery.of(context).size.height * 0.5,
@@ -1036,7 +981,6 @@ class _HomePageState extends State<HomePage> {
                             if (newLang != _selectedLanguage) {
                               setState(() {
                                 _selectedLanguage = newLang;
-                                // Clear stale translated content so old language doesn't show
                                 if (_reportData != null) {
                                   _reportData = {
                                     ..._reportData!,
@@ -1187,122 +1131,85 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-     appBar: AppBar(
-  elevation: 0,
-  toolbarHeight: 84,
-  automaticallyImplyLeading: false,
-  backgroundColor: Colors.transparent,
-
-  flexibleSpace: Container(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          AppColors.navy800,
-          AppColors.navy600,
-        ],
-      ),
-    ),
-  ),
-
-  titleSpacing: 16,
-
-  title: Row(
-    children: [
-      Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.18),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: const Icon(
-          Icons.medical_services_rounded,
-          color: Colors.white,
-          size: 26,
-        ),
-      ),
-
-      const SizedBox(width: 14),
-
-      const Expanded(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-
-            Text(
-              "MediSimple",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
+      appBar: AppBar(
+        elevation: 0,
+        toolbarHeight: 84,
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.navy800, AppColors.navy600],
             ),
-
-            SizedBox(height: 2),
-
-            Text(
-              "AI Medical Report Assistant",
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
+          ),
+        ),
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.medical_services_rounded,
+                  color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("MediSimple",
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold)),
+                  SizedBox(height: 2),
+                  Text("AI Medical Report Assistant",
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
               ),
             ),
           ],
         ),
-      ),
-    ],
-  ),
-
-  actions: [
-
-    if (_isTranslating)
-      const Padding(
-        padding: EdgeInsets.only(right: 16),
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.5,
-            color: Colors.white,
-          ),
-        ),
-      )
-    else
-      Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(.15),
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: TextButton.icon(
-            onPressed: _showLanguageSelector,
-            icon: const Icon(
-              Icons.language,
-              color: Colors.white,
-              size: 18,
-            ),
-            label: Text(
-              _selectedLanguage,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+        actions: [
+          if (_isTranslating)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: Colors.white),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.15),
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: TextButton.icon(
+                  onPressed: _showLanguageSelector,
+                  icon: const Icon(Icons.language, color: Colors.white, size: 18),
+                  label: Text(_selectedLanguage,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w600)),
+                  style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8)),
+                ),
               ),
             ),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 8,
-              ),
-            ),
-          ),
-        ),
+        ],
       ),
-  ],
-),
       body: Stack(
         children: [
           IndexedStack(
@@ -1314,7 +1221,6 @@ class _HomePageState extends State<HomePage> {
               _buildSettingsTab(),
             ],
           ),
-          // Full-screen translating overlay — covers ALL tabs
           if (_isTranslating)
             Container(
               color: Colors.black.withOpacity(0.45),
@@ -1327,10 +1233,9 @@ class _HomePageState extends State<HomePage> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8))
                     ],
                   ),
                   child: Column(
@@ -1340,25 +1245,19 @@ class _HomePageState extends State<HomePage> {
                         width: 48,
                         height: 48,
                         child: CircularProgressIndicator(
-                          strokeWidth: 3,
-                          color: AppColors.navy700,
-                        ),
+                            strokeWidth: 3, color: AppColors.navy700),
                       ),
                       const SizedBox(height: 20),
-                      Text(
-                        'Translating to $_selectedLanguage',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF2B2B2B),
-                        ),
-                      ),
+                      Text('Translating to $_selectedLanguage',
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2B2B2B))),
                       const SizedBox(height: 6),
                       const Text(
-                        'Explanation, suggestions, disease\nand solution are being translated…',
-                        style: TextStyle(fontSize: 13, color: Colors.grey),
-                        textAlign: TextAlign.center,
-                      ),
+                          'Explanation, suggestions, disease\nand solution are being translated…',
+                          style: TextStyle(fontSize: 13, color: Colors.grey),
+                          textAlign: TextAlign.center),
                     ],
                   ),
                 ),
@@ -1366,45 +1265,36 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-  bottomNavigationBar: NavigationBar(
-  selectedIndex: _selectedIndex,
-  height: 72,
-  backgroundColor: Colors.white,
-  indicatorColor: const AppColors.navy50,
-
-  onDestinationSelected: (index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  },
-
-  destinations: const [
-
-    NavigationDestination(
-      icon: Icon(Icons.home_outlined),
-      selectedIcon: Icon(Icons.home),
-      label: "Home",
-    ),
-
-    NavigationDestination(
-      icon: Icon(Icons.description_outlined),
-      selectedIcon: Icon(Icons.description),
-      label: "Explain",
-    ),
-
-    NavigationDestination(
-      icon: Icon(Icons.lightbulb_outline),
-      selectedIcon: Icon(Icons.lightbulb),
-      label: "Suggestions",
-    ),
-
-    NavigationDestination(
-      icon: Icon(Icons.settings_outlined),
-      selectedIcon: Icon(Icons.settings),
-      label: "Settings",
-    ),
-  ],
-),
+      // FIX 4: NavigationBar onDestinationSelected now updates _currentIndex
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        height: 72,
+        backgroundColor: Colors.white,
+        indicatorColor: const AppColors.navy50,
+        onDestinationSelected: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: "Home"),
+          NavigationDestination(
+              icon: Icon(Icons.description_outlined),
+              selectedIcon: Icon(Icons.description),
+              label: "Explain"),
+          NavigationDestination(
+              icon: Icon(Icons.lightbulb_outline),
+              selectedIcon: Icon(Icons.lightbulb),
+              label: "Suggestions"),
+          NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: "Settings"),
+        ],
+      ),
     );
   }
 
@@ -1414,50 +1304,57 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Hero card
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [AppColors.navy800, AppColors.navy700],
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(
-                color: AppColors.navy900.withValues(alpha: 0.25),
-                blurRadius: 20, offset: const Offset(0, 8),
-              )],
+              boxShadow: [
+                BoxShadow(
+                    color: AppColors.navy900.withValues(alpha: 0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8))
+              ],
             ),
             child: Row(children: [
               Container(
-                width: 52, height: 52,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.medical_services_rounded, color: Colors.white, size: 26),
+                child: const Icon(Icons.medical_services_rounded,
+                    color: Colors.white, size: 26),
               ),
               const SizedBox(width: 14),
-              const Expanded(child: Column(
+              const Expanded(
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('MediSimple', style: TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.w800,
-                    color: Colors.white, letterSpacing: -0.4,
-                  )),
+                  Text('MediSimple',
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -0.4)),
                   SizedBox(height: 4),
                   Text('AI Medical Report Assistant',
-                    style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      style: TextStyle(fontSize: 12, color: Colors.white70)),
                 ],
               )),
             ]),
           ),
           const SizedBox(height: 20),
-          // Upload zone
           GestureDetector(
             onTap: _isLoading ? null : _pickFile,
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+              padding:
+                  const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(14),
@@ -1465,39 +1362,66 @@ class _HomePageState extends State<HomePage> {
                   color: _isLoading ? AppColors.navy200 : AppColors.navy800,
                   width: 1.5,
                 ),
-                boxShadow: [BoxShadow(
-                  color: AppColors.navy800.withValues(alpha: 0.06),
-                  blurRadius: 12, offset: const Offset(0, 4),
-                )],
+                boxShadow: [
+                  BoxShadow(
+                      color: AppColors.navy800.withValues(alpha: 0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4))
+                ],
               ),
               child: _isLoading
                   ? Column(children: [
-                      const SizedBox(width: 36, height: 36,
-                        child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.navy800)),
+                      const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 3, color: AppColors.navy800)),
                       const SizedBox(height: 14),
                       const Text('Analysing your report…',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.navy800)),
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.navy800)),
                       const SizedBox(height: 6),
-                      Text(_loadingMessage.isNotEmpty ? _loadingMessage : 'This usually takes 20–40 seconds',
+                      Text(
+                        _loadingMessage.isNotEmpty
+                            ? _loadingMessage
+                            : 'This usually takes 20–40 seconds',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.textSecondary),
+                      ),
                     ])
                   : Column(children: [
-                      Container(width: 64, height: 64,
-                        decoration: const BoxDecoration(color: AppColors.navy50, shape: BoxShape.circle),
-                        child: const Icon(Icons.cloud_upload_rounded, color: AppColors.navy800, size: 30)),
+                      Container(
+                          width: 64,
+                          height: 64,
+                          decoration: const BoxDecoration(
+                              color: AppColors.navy50, shape: BoxShape.circle),
+                          child: const Icon(Icons.cloud_upload_rounded,
+                              color: AppColors.navy800, size: 30)),
                       const SizedBox(height: 14),
                       const Text('Upload PDF Report',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary)),
                       const SizedBox(height: 6),
                       const Text('Lab reports · Prescriptions · Clinical notes',
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                          style: TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary)),
                       const SizedBox(height: 16),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 11),
-                        decoration: BoxDecoration(color: AppColors.navy800, borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 11),
+                        decoration: BoxDecoration(
+                            color: AppColors.navy800,
+                            borderRadius: BorderRadius.circular(8)),
                         child: const Text('Choose File',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14)),
                       ),
                     ]),
             ),
@@ -1507,16 +1431,21 @@ class _HomePageState extends State<HomePage> {
             _buildResultOverview(),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: OutlinedButton.icon(
+              Expanded(
+                  child: OutlinedButton.icon(
                 onPressed: _isDownloadingPdf ? null : _downloadPdf,
                 icon: _isDownloadingPdf
-                    ? const SizedBox(width: 14, height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.navy800))
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.navy800))
                     : const Icon(Icons.download_rounded, size: 18),
                 label: Text(_isDownloadingPdf ? 'Generating…' : 'Download PDF'),
               )),
               const SizedBox(width: 10),
-              Expanded(child: ElevatedButton.icon(
+              Expanded(
+                  child: ElevatedButton.icon(
                 onPressed: () => setState(() => _currentIndex = 2),
                 icon: const Icon(Icons.tips_and_updates_rounded, size: 18),
                 label: const Text('Suggestions'),
@@ -1545,10 +1474,9 @@ class _HomePageState extends State<HomePage> {
         children: [
           Icon(icon, color: const AppColors.navy800, size: 16),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -1575,32 +1503,21 @@ class _HomePageState extends State<HomePage> {
                   color: const Color(0xFFECFDF5),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
-                  Icons.check_circle,
-                  color: AppColors.navy800,
-                  size: 18,
-                ),
+                child: const Icon(Icons.check_circle,
+                    color: AppColors.navy800, size: 18),
               ),
               const SizedBox(width: 10),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Report processed',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    Text('Report processed',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
                     SizedBox(height: 2),
-                    Text(
-                      'Your report summary and guidance are ready.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                    Text('Your report summary and guidance are ready.',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
@@ -1608,13 +1525,9 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
           if (suggestions.isNotEmpty)
-            Text(
-              'Ready for review',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
+            const Text('Ready for review',
+                style:
+                    TextStyle(fontSize: 12, color: AppColors.textSecondary)),
         ],
       ),
     );
@@ -1627,11 +1540,9 @@ class _HomePageState extends State<HomePage> {
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(99),
       ),
-      child: Text(
-        label,
-        style:
-            TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
-      ),
+      child: Text(label,
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.bold, fontSize: 12)),
     );
   }
 
@@ -1664,7 +1575,6 @@ class _HomePageState extends State<HomePage> {
     return const [];
   }
 
-
   Widget _buildExplainTab() {
     if (_reportData == null) {
       return LayoutBuilder(
@@ -1684,32 +1594,23 @@ class _HomePageState extends State<HomePage> {
                         decoration: BoxDecoration(
                           color: const AppColors.navy50,
                           shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFCCFBF1), width: 1.5),
+                          border: Border.all(
+                              color: const Color(0xFFCCFBF1), width: 1.5),
                         ),
-                        child: Icon(
-                          Icons.description_outlined,
-                          size: 64,
-                          color: Colors.grey.shade400,
-                        ),
+                        child: Icon(Icons.description_outlined,
+                            size: 64, color: Colors.grey.shade400),
                       ),
                       const SizedBox(height: 24),
-                      const Text(
-                        'Upload a medical report to get started',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
+                      const Text('Upload a medical report to get started',
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87)),
                       const SizedBox(height: 8),
-                      Text(
-                        'Upload a PDF report to get started',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
+                      Text('Upload a PDF report to get started',
+                          style: TextStyle(
+                              fontSize: 14, color: Colors.grey.shade600),
+                          textAlign: TextAlign.center),
                     ],
                   ),
                 ),
@@ -1725,7 +1626,6 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Medical Summary Card
           _buildSectionCard(
             title: 'MediSimple',
             icon: Icons.medical_information,
@@ -1733,8 +1633,6 @@ class _HomePageState extends State<HomePage> {
             canSpeak: true,
           ),
           const SizedBox(height: 16),
-
-          // Simple Explanation Card
           _buildSectionCard(
             title: 'Simple Explanation',
             icon: Icons.lightbulb_outline,
@@ -1743,19 +1641,17 @@ class _HomePageState extends State<HomePage> {
             isHighlighted: true,
           ),
           const SizedBox(height: 16),
-
-          // Translated Card
           _buildSectionCard(
             title: '$_selectedLanguage Explanation',
             icon: Icons.translate,
             content: _isTranslating
                 ? 'Translating to $_selectedLanguage...'
                 : (_reportData!['translated_explanation']
-                            ?.toString()
-                            .isNotEmpty ==
-                        true
-                    ? _reportData!['translated_explanation']
-                    : 'Translation not available. Tap the language button above to retranslate.'),
+                                ?.toString()
+                                .isNotEmpty ==
+                            true
+                        ? _reportData!['translated_explanation']
+                        : 'Translation not available. Tap the language button above to retranslate.'),
             canSpeak: !_isTranslating,
             extraAction: _reportData != null && !_isTranslating
                 ? IconButton(
@@ -1767,8 +1663,6 @@ class _HomePageState extends State<HomePage> {
                 : null,
           ),
           const SizedBox(height: 16),
-
-          // Suggestions Card
           if (_reportData!['suggestions'] != null &&
               (_reportData!['suggestions'] as List).isNotEmpty) ...[
             Builder(builder: (context) {
@@ -1782,18 +1676,15 @@ class _HomePageState extends State<HomePage> {
                   : (_reportData!['suggestions'] as List)
                       .map((s) => s.toString())
                       .toList();
-              final title = showTranslated
-                  ? '$_selectedLanguage Suggestions'
-                  : 'AI Suggestions';
+              final title =
+                  showTranslated ? '$_selectedLanguage Suggestions' : 'AI Suggestions';
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   if (_isTranslating)
                     Card(
@@ -1803,11 +1694,10 @@ class _HomePageState extends State<HomePage> {
                         child: Row(
                           children: [
                             const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: AppColors.navy800),
-                            ),
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: AppColors.navy800)),
                             const SizedBox(width: 12),
                             Text('Translating to $_selectedLanguage...',
                                 style: const TextStyle(color: Colors.grey)),
@@ -1869,10 +1759,7 @@ class _HomePageState extends State<HomePage> {
       'Marathi': {'disease': 'आजाराची माहिती', 'solution': 'सुधारणेचे उपाय'},
       'Gujarati': {'disease': 'રોગની માહિતી', 'solution': 'સુધારાના ઉપાય'},
       'Kannada': {'disease': 'ರೋಗದ ಮಾಹಿತಿ', 'solution': 'ಸುಧಾರಣೆಯ ಮಾರ್ಗಗಳು'},
-      'Malayalam': {
-        'disease': 'രോഗ വിവരം',
-        'solution': 'മെച്ചപ്പെടുത്തൽ വഴികൾ'
-      },
+      'Malayalam': {'disease': 'രോഗ വിവരം', 'solution': 'മെച്ചപ്പെടുത്തൽ വഴികൾ'},
     };
 
     final labels = langLabels[_selectedLanguage];
@@ -1892,7 +1779,6 @@ class _HomePageState extends State<HomePage> {
     final translatedSuggestions =
         _asStringList(_reportData!['translated_suggestions']);
     final englishSuggestions = _asStringList(_reportData!['suggestions']);
-
     final translatingText = 'Translating to $_selectedLanguage...';
 
     return SingleChildScrollView(
@@ -1970,11 +1856,10 @@ class _HomePageState extends State<HomePage> {
                 child: Row(
                   children: [
                     const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.navy800),
-                    ),
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.navy800)),
                     const SizedBox(width: 12),
                     Text('Translating checklist to $_selectedLanguage...',
                         style: const TextStyle(color: Colors.grey)),
@@ -1983,10 +1868,9 @@ class _HomePageState extends State<HomePage> {
               ),
             )
           else if (translatedSuggestions.isNotEmpty && !isEnglish) ...[
-            Text(
-              '$_selectedLanguage Action Checklist',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            Text('$_selectedLanguage Action Checklist',
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             ...translatedSuggestions.asMap().entries.map(
                   (entry) => _buildSuggestionTile(
@@ -2000,7 +1884,8 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 16),
             ExpansionTile(
               tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-              leading: const Icon(Icons.translate, color: AppColors.navy800),
+              leading:
+                  const Icon(Icons.translate, color: AppColors.navy800),
               title: const Text('Original AI Suggestions (English)'),
               children: englishSuggestions
                   .map(
@@ -2038,19 +1923,16 @@ class _HomePageState extends State<HomePage> {
             CircleAvatar(
               radius: 14,
               backgroundColor: color.withOpacity(0.14),
-              child: Text(
-                '$index',
-                style: TextStyle(
-                    color: color, fontSize: 12, fontWeight: FontWeight.bold),
-              ),
+              child: Text('$index',
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold)),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                text,
-                style: const TextStyle(fontSize: 14, height: 1.35),
-              ),
-            ),
+                child: Text(text,
+                    style: const TextStyle(fontSize: 14, height: 1.35))),
           ],
         ),
       ),
@@ -2076,35 +1958,33 @@ class _HomePageState extends State<HomePage> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFEBF2F0), width: 1),
+                    border:
+                        Border.all(color: const Color(0xFFEBF2F0), width: 1),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0FDFA),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF0FDFA),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(icon, size: 56, color: const AppColors.navy800),
+                        child: Icon(icon,
+                            size: 56, color: const AppColors.navy800),
                       ),
                       const SizedBox(height: 18),
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87),
+                          textAlign: TextAlign.center),
                       const SizedBox(height: 8),
-                      Text(
-                        subtitle,
-                        style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                        textAlign: TextAlign.center,
-                      ),
+                      Text(subtitle,
+                          style: TextStyle(
+                              fontSize: 14, color: Colors.grey.shade600),
+                          textAlign: TextAlign.center),
                     ],
                   ),
                 ),
@@ -2126,8 +2006,12 @@ class _HomePageState extends State<HomePage> {
   }) {
     final paragraphs = content.trim().isEmpty
         ? <String>[]
-        : content.split(RegExp(r'\n\s*\n+')).map((p) => p.trim())
-            .where((p) => p.isNotEmpty).take(6).toList();
+        : content
+            .split(RegExp(r'\n\s*\n+'))
+            .map((p) => p.trim())
+            .where((p) => p.isNotEmpty)
+            .take(6)
+            .toList();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -2139,14 +2023,16 @@ class _HomePageState extends State<HomePage> {
             color: isHighlighted ? AppColors.gold600 : AppColors.navy800,
             width: 3,
           ),
-          top:    const BorderSide(color: AppColors.border),
-          right:  const BorderSide(color: AppColors.border),
+          top: const BorderSide(color: AppColors.border),
+          right: const BorderSide(color: AppColors.border),
           bottom: const BorderSide(color: AppColors.border),
         ),
-        boxShadow: [BoxShadow(
-          color: AppColors.navy800.withValues(alpha: 0.05),
-          blurRadius: 8, offset: const Offset(0, 2),
-        )],
+        boxShadow: [
+          BoxShadow(
+              color: AppColors.navy800.withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2))
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -2155,19 +2041,25 @@ class _HomePageState extends State<HomePage> {
           children: [
             Row(children: [
               Container(
-                width: 34, height: 34,
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
                   color: isHighlighted ? AppColors.gold100 : AppColors.navy50,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon,
-                  color: isHighlighted ? AppColors.gold600 : AppColors.navy800,
-                  size: 18),
+                    color: isHighlighted
+                        ? AppColors.gold600
+                        : AppColors.navy800,
+                    size: 18),
               ),
               const SizedBox(width: 10),
-              Expanded(child: Text(title,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary))),
+              Expanded(
+                  child: Text(title,
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary))),
               if (extraAction != null) extraAction,
               if (canSpeak)
                 Material(
@@ -2191,14 +2083,19 @@ class _HomePageState extends State<HomePage> {
             const Divider(height: 16),
             if (paragraphs.isEmpty)
               const Text('No content available yet.',
-                style: TextStyle(fontSize: 14, height: 1.45,
-                    color: AppColors.textSecondary))
+                  style: TextStyle(
+                      fontSize: 14,
+                      height: 1.45,
+                      color: AppColors.textSecondary))
             else
               ...paragraphs.map((p) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(p, style: const TextStyle(
-                  fontSize: 14, height: 1.55, color: AppColors.textPrimary)),
-              )),
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(p,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.55,
+                            color: AppColors.textPrimary)),
+                  )),
           ],
         ),
       ),
@@ -2211,43 +2108,28 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Company Info Card
           Card(
             elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  // Company Logo
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      'assets/images/medisimple_logo.jpg',
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover,
-                    ),
+                    child: Image.asset('assets/images/medisimple_logo.jpg',
+                        width: 80, height: 80, fit: BoxFit.cover),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'MediSimple',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Text(
-                    'Your Personal Health Expert',
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  const Text('MediSimple',
+                      style:
+                          TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const Text('Your Personal Health Expert',
+                      style: TextStyle(color: Colors.grey)),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Version 2.0.0',
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  const Text('Version 2.0.0',
+                      style: TextStyle(color: Colors.grey)),
                 ],
               ),
             ),
@@ -2261,12 +2143,10 @@ class _HomePageState extends State<HomePage> {
               onTap: _showLanguageSelector,
             ),
           ),
-
-          // TTS Settings
           Card(
             child: ListTile(
-              leading:
-                  const Icon(Icons.record_voice_over, color: AppColors.navy800),
+              leading: const Icon(Icons.record_voice_over,
+                  color: AppColors.navy800),
               title: const Text('Text-to-Speech'),
               subtitle: Text(_ttsEnabled ? 'Enabled' : 'Disabled'),
               trailing: Switch(
@@ -2287,18 +2167,18 @@ class _HomePageState extends State<HomePage> {
           ),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.headphones, color: AppColors.navy800),
+              leading:
+                  const Icon(Icons.headphones, color: AppColors.navy800),
               title: const Text('Voice Model'),
               subtitle: Text(_selectedVoiceName ?? 'Default'),
               trailing: const Icon(Icons.chevron_right),
               onTap: _showVoiceSelector,
             ),
           ),
-
-          // About
           Card(
             child: ListTile(
-              leading: const Icon(Icons.info_outline, color: AppColors.navy800),
+              leading:
+                  const Icon(Icons.info_outline, color: AppColors.navy800),
               title: const Text('About'),
               subtitle: const Text('System information'),
               trailing: const Icon(Icons.chevron_right),
