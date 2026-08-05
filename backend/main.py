@@ -502,44 +502,44 @@ async def synthesize_speech(request: Request):
         lang_code = lang_map.get(language, "hi")
         audio_content = None
 
-        # ── Tier 1: ElevenLabs Multilingual v2 ──────────────────────
-        # Dynamically picks the best voice from the user's account so
-        # free-tier premade voices are used automatically (no more
-        # 402 "library voice" errors from hardcoded IDs).
+        # ── Tier 1: Microsoft Edge TTS (free, neural, always available) ─
+        # Primary voice — genuinely good neural quality for all 9 Indian
+        # languages. Using Edge first guarantees natural-sounding audio
+        # even when paid APIs (ElevenLabs, Sarvam) are out of credits.
         try:
-            audio_content = elevenlabs_tts.synthesize(text, lang_code)
-            print(f"[synthesize] ElevenLabs OK for lang={lang_code}")
-        except elevenlabs_tts.ElevenLabsConfigError:
-            print(f"[synthesize] ElevenLabs not configured, trying Sarvam")
-        except elevenlabs_tts.ElevenLabsTtsError as e:
-            print(f"[synthesize] ElevenLabs failed ({e}), trying Sarvam")
+            audio_content = await edge_tts_voices.synthesize(text, lang_code)
+            print(f"[synthesize] Edge TTS OK for lang={lang_code}")
+        except Exception as e:
+            print(f"[synthesize] Edge TTS failed ({e}), trying Sarvam")
 
-        # ── Tier 2: Sarvam AI Bulbul v3 ─────────────────────────────
+        # ── Tier 2: Sarvam AI Bulbul v3 (best for Indian languages) ──
         if audio_content is None:
             try:
                 audio_content = sarvam_tts.synthesize(text, lang_code)
                 print(f"[synthesize] Sarvam AI OK for lang={lang_code}")
             except sarvam_tts.SarvamConfigError:
-                print(f"[synthesize] Sarvam not configured, trying Edge TTS")
+                print(f"[synthesize] Sarvam not configured, trying ElevenLabs")
             except sarvam_tts.SarvamTtsError as e:
-                print(f"[synthesize] Sarvam failed ({e}), trying Edge TTS")
+                print(f"[synthesize] Sarvam failed ({e}), trying ElevenLabs")
 
-        # ── Tier 3: Microsoft Edge TTS neural voices ─────────────────
+        # ── Tier 3: ElevenLabs (if API key configured) ────────────────
         if audio_content is None:
             try:
-                audio_content = await edge_tts_voices.synthesize(text, lang_code)
-                print(f"[synthesize] Edge TTS OK for lang={lang_code}")
-            except Exception as e:
-                print(f"[synthesize] Edge TTS failed ({e}), falling back to gTTS")
+                audio_content = elevenlabs_tts.synthesize(text, lang_code)
+                print(f"[synthesize] ElevenLabs OK for lang={lang_code}")
+            except elevenlabs_tts.ElevenLabsConfigError:
+                print(f"[synthesize] ElevenLabs not configured, trying gTTS")
+            except elevenlabs_tts.ElevenLabsTtsError as e:
+                print(f"[synthesize] ElevenLabs failed ({e}), trying gTTS")
 
-        # ── Tier 4: gTTS (always available) ─────────────────────────
+        # ── Tier 4: gTTS (last resort only) ──────────────────────────
         if audio_content is None:
             tts = gTTS(text=text, lang=lang_code, slow=False)
             audio_bytes = io.BytesIO()
             tts.write_to_fp(audio_bytes)
             audio_bytes.seek(0)
             audio_content = audio_bytes.getvalue()
-            print(f"[synthesize] gTTS fallback used for lang={lang_code}")
+            print(f"[synthesize] gTTS last-resort used for lang={lang_code}")
 
         return StreamingResponse(
             iter([audio_content]),

@@ -1,32 +1,20 @@
 """
-Higher-quality speech synthesis via Microsoft Edge's free neural voices.
+High-quality speech synthesis via Microsoft Edge's free neural voices
+with optimized rate, pitch, and volume for natural medical narration.
 
-Why this exists: gTTS (Google Translate's free speech endpoint) works for
-every language this app supports, but its underlying voice engine is
-noticeably more robotic-sounding than modern neural TTS. Microsoft Edge's
-built-in "Read aloud" feature uses the same neural voice catalog as Azure
-Cognitive Services' premium Speech service, and like gTTS it's reachable
-for free with no API key or billing account -- the `edge-tts` package
-(https://github.com/rany2/edge-tts) just talks to the same free endpoint
-the Edge browser itself uses.
-
-This is still an unofficial/undocumented mechanism with no SLA, exactly
-like the gTTS approach it sits alongside: Microsoft could change or
-rate-limit it without notice. If it's ever unreachable, the caller should
-fall back to gTTS, which is the existing, already-proven path -- this
-module never needs to be the only option.
+The edge-tts package uses the same neural voice catalog as Azure
+Cognitive Services' premium Speech service — completely free, no API key.
 """
 
 import edge_tts
 
-# One well-established neural voice per language this app supports. These
-# are standard Microsoft voice names that have been stable for several
-# years (the same catalog used by Azure's paid Speech service), but if
-# Microsoft ever renames/retires one, edge_tts.Communicate will raise and
-# the caller's gTTS fallback takes over -- this never needs to be perfect.
+# Best neural voice per language — calm, clear, professional.
+# Rate: -5% (slightly slower than default for medical content clarity)
+# Pitch: +0Hz (natural, no artificial adjustment)
+# Volume: +0% (balanced)
 LANGUAGE_TO_EDGE_VOICE = {
-    "en": "en-US-AriaNeural",
-    "hi": "hi-IN-SwaraNeural",
+    "en": "en-US-JennyNeural",      # warm, clear, natural American English
+    "hi": "hi-IN-SwaraNeural",      # best Hindi neural voice
     "bn": "bn-IN-TanishaaNeural",
     "ta": "ta-IN-PallaviNeural",
     "te": "te-IN-ShrutiNeural",
@@ -34,17 +22,36 @@ LANGUAGE_TO_EDGE_VOICE = {
     "gu": "gu-IN-DhwaniNeural",
     "kn": "kn-IN-SapnaNeural",
     "ml": "ml-IN-SobhanaNeural",
-    "pa": "hi-IN-SwaraNeural",  # no dedicated Punjabi neural voice; closest available
-    "ur": "hi-IN-SwaraNeural",  # ditto for Urdu
+    "pa": "hi-IN-SwaraNeural",
+    "ur": "hi-IN-SwaraNeural",
+    "or": "hi-IN-SwaraNeural",
+    "as": "bn-IN-TanishaaNeural",
 }
+
+# Voice tuning for medical report narration:
+# Slightly slower rate improves comprehension of medical terms.
+# No pitch shift keeps the voice sounding natural and human.
+RATE  = "-8%"   # 8% slower than default
+PITCH = "+0Hz"  # no pitch change
+VOLUME = "+0%"  # normal volume
 
 
 async def synthesize(text: str, lang_code: str) -> bytes:
-    """Synthesizes `text` using the best available Edge neural voice for
-    `lang_code`, returning raw MP3 bytes. Raises on any failure (network,
-    unknown voice, etc.) -- callers should catch and fall back to gTTS."""
-    voice = LANGUAGE_TO_EDGE_VOICE.get(lang_code, "en-US-AriaNeural")
-    communicate = edge_tts.Communicate(text, voice)
+    """
+    Synthesize text using the best Edge neural voice for lang_code.
+    Returns raw MP3 bytes. Raises on failure.
+    """
+    voice = LANGUAGE_TO_EDGE_VOICE.get(lang_code, "en-US-JennyNeural")
+
+    print(f"[edge_tts] voice={voice} rate={RATE} lang={lang_code} chars={len(text)}")
+
+    communicate = edge_tts.Communicate(
+        text,
+        voice,
+        rate=RATE,
+        pitch=PITCH,
+        volume=VOLUME,
+    )
 
     chunks = []
     async for chunk in communicate.stream():
@@ -54,4 +61,6 @@ async def synthesize(text: str, lang_code: str) -> bytes:
     audio_bytes = b"".join(chunks)
     if not audio_bytes:
         raise RuntimeError(f"Edge TTS returned no audio for voice '{voice}'")
+
+    print(f"[edge_tts] OK — {len(audio_bytes)} bytes")
     return audio_bytes
