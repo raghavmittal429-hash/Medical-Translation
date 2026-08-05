@@ -31,7 +31,7 @@ class MedicalCDSSApp extends StatelessWidget {
     brightness: Brightness.light,
   ),
 
-  scaffoldBackgroundColor: const Color(0xFFF5F7FA),
+  scaffoldBackgroundColor: const Color(0xFFFDF6EC),
 
   fontFamily: 'Roboto',
 
@@ -810,7 +810,7 @@ class _HomePageState extends State<HomePage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Translated to $langName'),
-            backgroundColor: const Color(0xFF2E7D32),
+            backgroundColor: const Color(0xFFC45E00),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
           ));
@@ -849,9 +849,9 @@ class _HomePageState extends State<HomePage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFDF0F0),
+                color: const Color(0xFFFDF6EC),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFEDCCCC)),
+                border: Border.all(color: const Color(0xFFF0D5B0)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -904,7 +904,7 @@ class _HomePageState extends State<HomePage> {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFDF0F0),
+                          color: const Color(0xFFFDF6EC),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.language,
@@ -943,8 +943,8 @@ class _HomePageState extends State<HomePage> {
                             height: 40,
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? const Color(0xFFFDF0F0)
-                                  : const Color(0xFFF5F5F5),
+                                  ? const Color(0xFFFDF6EC)
+                                  : const Color(0xFFFFF3E0),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             alignment: Alignment.center,
@@ -974,7 +974,7 @@ class _HomePageState extends State<HomePage> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8)),
                           tileColor:
-                              isSelected ? const Color(0xFFFDF0F0) : null,
+                              isSelected ? const Color(0xFFFDF6EC) : null,
                           onTap: () {
                             final newLang = lang['name']!;
                             Navigator.pop(context);
@@ -1032,7 +1032,7 @@ class _HomePageState extends State<HomePage> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFDF0F0),
+                        color: const Color(0xFFFDF6EC),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(Icons.hearing,
@@ -1483,7 +1483,7 @@ class _HomePageState extends State<HomePage> {
       decoration: BoxDecoration(
         color: AppColors.navy50,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
+        border: Border.all(color: const Color(0xFFFFF3E0), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1493,7 +1493,7 @@ class _HomePageState extends State<HomePage> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
+                  color: const Color(0xFFFFF3E0),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.check_circle,
@@ -1588,7 +1588,7 @@ class _HomePageState extends State<HomePage> {
                           color: AppColors.navy50,
                           shape: BoxShape.circle,
                           border: Border.all(
-                              color: const Color(0xFFCCFBF1), width: 1.5),
+                              color: const Color(0xFFFFF3E0), width: 1.5),
                         ),
                         child: Icon(Icons.description_outlined,
                             size: 64, color: Colors.grey.shade400),
@@ -1952,7 +1952,7 @@ class _HomePageState extends State<HomePage> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border:
-                        Border.all(color: const Color(0xFFEBF2F0), width: 1),
+                        Border.all(color: const Color(0xFFFDF6EC), width: 1),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1960,7 +1960,7 @@ class _HomePageState extends State<HomePage> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: const BoxDecoration(
-                          color: Color(0xFFF0FDFA),
+                          color: Color(0xFFFDF6EC),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(icon,
