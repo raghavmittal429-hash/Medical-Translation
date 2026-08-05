@@ -1416,10 +1416,6 @@ class _HomePageState extends State<HomePage> {
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: AppColors.textPrimary)),
-                      const SizedBox(height: 6),
-                      const Text('Lab reports · Prescriptions · Clinical notes',
-                          style: TextStyle(
-                              fontSize: 13, color: AppColors.textSecondary)),
                       const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.symmetric(
