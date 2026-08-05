@@ -23,6 +23,7 @@ echo "=== Building Web App ==="
 # API_BASE_URL must be set in Vercel dashboard:
 # Project Settings → Environment Variables → API_BASE_URL = https://your-backend.onrender.com
 flutter build web \
+  --no-wasm-dry-run \
   --dart-define=API_BASE_URL=${API_BASE_URL:-https://medical-translation-5.onrender.com} \
   --release
 
