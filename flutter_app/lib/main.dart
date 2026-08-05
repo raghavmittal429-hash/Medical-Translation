@@ -428,56 +428,135 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  Future<void> _speak(String text) async {
-    if (text.isEmpty || !_ttsEnabled) return;
+  // Strips markdown/decorative symbols that would read literally as text
+  // or speech (e.g. "======" spoken as "equal equal equal").
+  String _stripDecorativeSymbols(String input) {
+    var t = input;
+    t = t.replaceAllMapped(RegExp(r'\*\*(.*?)\*\*'), (m) => m.group(1) ?? '');
+    t = t.replaceAllMapped(RegExp(r'__(.*?)__'),     (m) => m.group(1) ?? '');
+    t = t.replaceAllMapped(RegExp(r'(?<!\*)\*([^*\n]+)\*(?!\*)'), (m) => m.group(1) ?? '');
+    t = t.replaceAllMapped(RegExp(r'`([^`]*)`'),     (m) => m.group(1) ?? '');
+    t = t.replaceAll(RegExp(r'^#{1,6}\s*',  multiLine: true), '');
+    t = t.replaceAll(RegExp(r'^\s*[-*+]\s+',multiLine: true), '');
+    t = t.replaceAll(RegExp(r'([^\w\s])\1{2,}'), ' '); // ===, ---, ***
+    t = t.replaceAll(RegExp(r'_{3,}'), ' ');
+    t = t.replaceAll(RegExp(r'[|`*_#]'), ' ');
+    t = t.replaceAll(
+      RegExp(r'[\u2600-\u27BF\u2B00-\u2BFF\uFE0E\uFE0F\u200D]'), ' ');
+    t = t.replaceAll(RegExp(r'[ \t]+'), ' ');
+    t = t.replaceAll(RegExp(r'[ \t]*\n[ \t]*'), '\n');
+    return t.trim();
+  }
 
+  // TTS-specific: strips symbols AND folds newlines into ". " pauses.
+  String _sanitizeForSpeech(String input) {
+    var t = _stripDecorativeSymbols(input);
+    t = t.replaceAll(RegExp(r'\n\s*\n+'), '. ');
+    t = t.replaceAll('\n', '. ');
+    t = t.replaceAll(RegExp(r'[ \t]+'), ' ');
+    return t.trim();
+  }
+
+  // Generation counter — increments every time _speak() is called.
+  // Any in-flight audio loop compares against this; if it changed,
+  // a newer card was tapped and the old audio stops immediately.
+  int _speakGeneration = 0;
+  html.AudioElement? _currentAudio;
+
+  Future<void> _speak(String rawText) async {
+    if (rawText.isEmpty || !_ttsEnabled) return;
+
+    final text = _sanitizeForSpeech(rawText);
+    if (text.isEmpty) return;
+
+    // Increment generation — kills any in-flight playback loop
+    final gen = ++_speakGeneration;
+
+    // Stop whatever is currently playing
+    _currentAudio?.pause();
+    _currentAudio = null;
     await _tts.stop();
-    await _applyVoiceForLanguage(_selectedLanguage);
 
-    if (_selectedLanguage != 'English' &&
-        !_hasMatchingDeviceVoice(_selectedLanguage)) {
+    await _speakViaBackend(text, _selectedLanguage, gen);
+  }
+
+  Future<void> _speakViaBackend(String text, String language, int gen) async {
+    final langCode = _languageCodeFor(language);
+    final ttsUrl = _buildApiUrl('/synthesize');
+
+    // Split into small chunks so first audio plays fast (~1s)
+    final chunks = _splitSpeechChunks(text);
+
+    for (final chunk in chunks) {
+      // Stop if user tapped a different card
+      if (_speakGeneration != gen) return;
+      if (chunk.trim().isEmpty) continue;
+
       try {
-        await _speakViaBackend(text, _selectedLanguage);
-        return;
-      } catch (_) {}
-    }
+        final response = await http.post(
+          ttsUrl,
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'text': chunk, 'language': langCode}),
+        ).timeout(const Duration(seconds: 30));
 
-    try {
-      await _tts.speak(text).timeout(const Duration(seconds: 90));
-    } catch (e) {
-      if (_selectedLanguage != 'English') {
-        try {
-          await _speakViaBackend(text, _selectedLanguage);
-        } catch (_) {}
+        if (_speakGeneration != gen) return;
+
+        if (response.statusCode == 200) {
+          // Use Blob URL — no size limit unlike data: URIs
+          final blob = html.Blob([response.bodyBytes], 'audio/mpeg');
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          final audio = html.AudioElement(url);
+          _currentAudio = audio;
+
+          // Wait for this chunk to finish before playing the next
+          final completer = Completer<void>();
+          audio.onEnded.listen((_) {
+            html.Url.revokeObjectUrl(url);
+            if (!completer.isCompleted) completer.complete();
+          });
+          audio.onError.listen((_) {
+            html.Url.revokeObjectUrl(url);
+            if (!completer.isCompleted) completer.complete();
+          });
+
+          try {
+            await audio.play();
+          } catch (_) {
+            html.Url.revokeObjectUrl(url);
+            break;
+          }
+
+          await completer.future;
+
+          if (_speakGeneration != gen) return;
+        }
+      } catch (_) {
+        // Network/backend error — skip this chunk
       }
     }
   }
 
-  Future<void> _speakViaBackend(String text, String language) async {
-    try {
-      final langCode = _languageCodeFor(language);
-      final ttsUrl = _buildApiUrl('/synthesize');
+  List<String> _splitSpeechChunks(String text, {int maxLen = 300}) {
+    text = text.trim();
+    if (text.isEmpty) return [];
+    if (text.length <= maxLen) return [text];
 
-      final response = await http
-          .post(
-            ttsUrl,
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({'text': text, 'language': langCode}),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final base64Audio = base64Encode(response.bodyBytes);
-        final audioUrl = 'data:audio/mpeg;base64,$base64Audio';
-        html.AudioElement audio = html.AudioElement(audioUrl);
-        await audio.play().catchError((_) {});
-      } else {
-        throw Exception('Backend TTS failed with status ${response.statusCode}');
-      }
-    } catch (_) {
-      rethrow;
+    final chunks = <String>[];
+    while (text.isNotEmpty) {
+      if (text.length <= maxLen) { chunks.add(text); break; }
+      final slice = text.substring(0, maxLen);
+      var cut = [
+        slice.lastIndexOf('. '), slice.lastIndexOf('। '),
+        slice.lastIndexOf('? '), slice.lastIndexOf('! '),
+        slice.lastIndexOf('\n'),
+      ].where((i) => i > 30).fold(-1, (a, b) => b > a ? b : a);
+      if (cut < 0) cut = maxLen;
+      chunks.add(text.substring(0, cut + 1).trim());
+      text = text.substring(cut + 1).trim();
     }
+    return chunks.where((c) => c.isNotEmpty).toList();
   }
+
 
   List<String> _ttsLocalesFor(String language) {
     const localeMap = {
