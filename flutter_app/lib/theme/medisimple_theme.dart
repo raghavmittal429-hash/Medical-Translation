@@ -14,6 +14,8 @@ class AppColors {
   static const saffron2 = Color(0xFFD97706);  // mid
   static const saffron3 = Color(0xFFE08A00);  // light variant
   static const gold     = Color(0xFFD4A017);  // accent gold
+  static const gold600  = Color(0xFFD4A017);  // alias used in main.dart
+  static const gold100  = Color(0xFFFEF3C7);  // alias used in main.dart
   static const goldBg   = Color(0xFFFEF3C7);  // gold tint
   static const cream    = Color(0xFFFDF6EC);  // page background
   static const border   = Color(0xFFF0D5B0);  // warm border
