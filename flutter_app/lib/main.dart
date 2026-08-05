@@ -1745,6 +1745,19 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
 
+          // ── Medical Summary ───────────────────────────────────
+          if (_reportData!['medical_summary'] != null &&
+              _reportData!['medical_summary'].toString().trim().isNotEmpty) ...[
+            _buildSectionCard(
+              title: 'Medical Summary',
+              icon: Icons.summarize_outlined,
+              content: _stripDecorativeSymbols(
+                  _reportData!['medical_summary'].toString()),
+              canSpeak: true,
+            ),
+            const SizedBox(height: 12),
+          ],
+
 
 
           // ── Translated Explanation ────────────────────────────
