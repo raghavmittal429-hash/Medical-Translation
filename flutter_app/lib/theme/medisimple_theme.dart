@@ -1,40 +1,47 @@
 import 'package:flutter/material.dart';
 
-// ══════════════════════════════════════════════════════════
-//  MEDISIMPLE — Deep Navy + Gold Design System
-//  Primary: #0A2342   Accent: #C9890A   BG: #F4F6FA
-// ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  MEDIVAANII — Deep Green + Gold (Ayurvedic, Natural)
+//  Primary: #1A5C2A   Accent: #C9890A   BG: #F1F8F2
+// ══════════════════════════════════════════════════════════════
 
 class AppColors {
   AppColors._();
-  static const navy900  = Color(0xFF040F1E);
-  static const navy800  = Color(0xFF0A2342);
-  static const navy700  = Color(0xFF0E2F58);
-  static const navy600  = Color(0xFF1A3A5C);
-  static const navy400  = Color(0xFF4A6A8A);
-  static const navy200  = Color(0xFFB8CAD9);
-  static const navy100  = Color(0xFFDCE5EE);
-  static const navy50   = Color(0xFFEBF0F5);
+  static const green900 = Color(0xFF0A2E12);
+  static const green800 = Color(0xFF1A5C2A);  // primary
+  static const green700 = Color(0xFF1F6E32);
+  static const green600 = Color(0xFF2E7D40);
+  static const green400 = Color(0xFF5A9E68);
+  static const green200 = Color(0xFFA5D6A7);
+  static const green100 = Color(0xFFC8E6C9);
+  static const green50  = Color(0xFFE8F5E9);
 
   static const gold600  = Color(0xFFC9890A);
   static const gold500  = Color(0xFFE09A12);
-  static const gold100  = Color(0xFFFEF3C7);
+  static const gold100  = Color(0xFFFFF8E1);
   static const gold50   = Color(0xFFFFFBEB);
 
-  static const bg       = Color(0xFFF4F6FA);
+  static const bg       = Color(0xFFF1F8F2);
   static const surface  = Color(0xFFFFFFFF);
-  static const border   = Color(0xFFE2E8F0);
+  static const border   = Color(0xFFDCEEDE);
 
-  static const green    = Color(0xFF059669);
-  static const greenBg  = Color(0xFFD1FAE5);
+  static const success  = Color(0xFF059669);
   static const red      = Color(0xFFDC2626);
-  static const redBg    = Color(0xFFFEE2E2);
   static const amber    = Color(0xFFD97706);
-  static const amberBg  = Color(0xFFFEF3C7);
 
-  static const textPrimary   = Color(0xFF0F172A);
-  static const textSecondary = Color(0xFF475569);
-  static const textMuted     = Color(0xFF94A3B8);
+  static const textPrimary   = Color(0xFF0A2E12);
+  static const textSecondary = Color(0xFF4A7A52);
+  static const textMuted     = Color(0xFF8AB890);
+
+  // Aliases so existing code using navy* keeps compiling
+  static const navy800  = green800;
+  static const navy900  = green900;
+  static const navy700  = green700;
+  static const navy600  = green600;
+  static const navy400  = green400;
+  static const navy200  = green200;
+  static const navy100  = green100;
+  static const navy50   = green50;
 }
 
 class MediSimpleTheme {
@@ -44,9 +51,9 @@ class MediSimpleTheme {
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.bg,
       colorScheme: const ColorScheme.light(
-        primary: AppColors.navy800,
+        primary: AppColors.green800,
         onPrimary: Colors.white,
-        primaryContainer: AppColors.navy50,
+        primaryContainer: AppColors.green50,
         secondary: AppColors.gold600,
         onSecondary: Colors.white,
         surface: AppColors.surface,
@@ -54,7 +61,7 @@ class MediSimpleTheme {
         error: AppColors.red,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.navy800,
+        backgroundColor: AppColors.green900,
         foregroundColor: Colors.white,
         elevation: 0,
         toolbarHeight: 64,
@@ -65,7 +72,7 @@ class MediSimpleTheme {
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         surfaceTintColor: Colors.transparent,
-        shadowColor: AppColors.navy900.withValues(alpha: 0.4),
+        shadowColor: AppColors.green900.withValues(alpha: 0.4),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -80,26 +87,24 @@ class MediSimpleTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: 64,
         backgroundColor: AppColors.surface,
-        indicatorColor: AppColors.navy50,
+        indicatorColor: AppColors.green50,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shadowColor: Colors.transparent,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
           fontSize: 11, fontWeight: s.contains(WidgetState.selected)
               ? FontWeight.w700 : FontWeight.w500,
           color: s.contains(WidgetState.selected)
-              ? AppColors.navy800 : AppColors.textMuted,
+              ? AppColors.green800 : AppColors.textMuted,
         )),
         iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
           color: s.contains(WidgetState.selected)
-              ? AppColors.navy800 : AppColors.textMuted,
+              ? AppColors.green800 : AppColors.textMuted,
           size: 22,
         )),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.navy800,
+          backgroundColor: AppColors.green800,
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -109,51 +114,45 @@ class MediSimpleTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.navy800,
-          side: const BorderSide(color: AppColors.navy200, width: 1.5),
+          foregroundColor: AppColors.green800,
+          side: const BorderSide(color: AppColors.green200, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
-      dividerTheme: const DividerThemeData(
-        color: AppColors.border, thickness: 1, space: 1,
-      ),
+      dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1, space: 1),
       chipTheme: ChipThemeData(
-        backgroundColor: AppColors.navy50,
-        labelStyle: const TextStyle(
-          fontSize: 12, fontWeight: FontWeight.w500,
-          color: AppColors.navy700,
-        ),
-        side: const BorderSide(color: AppColors.navy100),
+        backgroundColor: AppColors.green50,
+        labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.green700),
+        side: const BorderSide(color: AppColors.green100),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: AppColors.navy900,
+        backgroundColor: AppColors.green900,
         contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: AppColors.navy800,
-        linearTrackColor: AppColors.navy50,
+        color: AppColors.green800,
+        linearTrackColor: AppColors.green50,
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((s) =>
             s.contains(WidgetState.selected) ? Colors.white : AppColors.border),
         trackColor: WidgetStateProperty.resolveWith((s) =>
-            s.contains(WidgetState.selected) ? AppColors.navy800 : AppColors.navy100),
+            s.contains(WidgetState.selected) ? AppColors.green800 : AppColors.green100),
       ),
     );
   }
 }
 
-// Legacy alias so existing APColors.X references keep compiling
 class APColors {
-  static const primary      = AppColors.navy800;
-  static const primaryDark  = AppColors.navy900;
-  static const primaryLight = AppColors.navy50;
+  static const primary      = AppColors.green800;
+  static const primaryDark  = AppColors.green900;
+  static const primaryLight = AppColors.green50;
   static const secondary    = AppColors.gold600;
   static const surface      = AppColors.surface;
   static const background   = AppColors.bg;

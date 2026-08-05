@@ -38,6 +38,7 @@ flutter:
 
   assets:
     - assets/images/medisimple_logo.jpg
+    - assets/images/arogya_pandit_logo.png
     - assets/fonts/NotoSans-Regular.ttf
     - assets/fonts/NotoSans-Bold.ttf
     - assets/fonts/NotoSansDevanagari-Regular.ttf
