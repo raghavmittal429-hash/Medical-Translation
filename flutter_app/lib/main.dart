@@ -32,7 +32,7 @@ class MedicalCDSSApp extends StatelessWidget {
     brightness: Brightness.light,
   ),
 
-  scaffoldBackgroundColor: const Color(0xFFFDF6EC),
+  scaffoldBackgroundColor: const Color(0xFFF5F8FF),
 
   fontFamily: 'Roboto',
 
@@ -811,7 +811,7 @@ class _HomePageState extends State<HomePage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Translated to $langName'),
-            backgroundColor: const Color(0xFFC45E00),
+            backgroundColor: const Color(0xFF1565C0),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
           ));
@@ -850,9 +850,9 @@ class _HomePageState extends State<HomePage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFDF6EC),
+                color: const Color(0xFFF5F8FF),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFF0D5B0)),
+                border: Border.all(color: const Color(0xFFBBDEFB)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -905,7 +905,7 @@ class _HomePageState extends State<HomePage> {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFDF6EC),
+                          color: const Color(0xFFF5F8FF),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.language,
@@ -944,7 +944,7 @@ class _HomePageState extends State<HomePage> {
                             height: 40,
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? const Color(0xFFFDF6EC)
+                                  ? const Color(0xFFF5F8FF)
                                   : const Color(0xFFFFF3E0),
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -975,7 +975,7 @@ class _HomePageState extends State<HomePage> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8)),
                           tileColor:
-                              isSelected ? const Color(0xFFFDF6EC) : null,
+                              isSelected ? const Color(0xFFF5F8FF) : null,
                           onTap: () {
                             final newLang = lang['name']!;
                             Navigator.pop(context);
@@ -1033,7 +1033,7 @@ class _HomePageState extends State<HomePage> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFDF6EC),
+                        color: const Color(0xFFF5F8FF),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(Icons.hearing,
@@ -1953,7 +1953,7 @@ class _HomePageState extends State<HomePage> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border:
-                        Border.all(color: const Color(0xFFFDF6EC), width: 1),
+                        Border.all(color: const Color(0xFFF5F8FF), width: 1),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1961,7 +1961,7 @@ class _HomePageState extends State<HomePage> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: const BoxDecoration(
-                          color: Color(0xFFFDF6EC),
+                          color: Color(0xFFF5F8FF),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(icon,
