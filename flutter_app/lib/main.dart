@@ -1703,7 +1703,30 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Simple patient-friendly explanation from the report
+
+          // ── Report Info ──────────────────────────────────────
+          if (_reportData!['report_date'] != null &&
+              _reportData!['report_date'].toString().isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.navy50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.navy200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today, size: 16, color: AppColors.navy800),
+                  const SizedBox(width: 8),
+                  Text('Report Date: ${_reportData!['report_date']}',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary)),
+                ],
+              ),
+            ),
+
+          // ── Simple Explanation ───────────────────────────────
           _buildSectionCard(
             title: 'Simple Explanation',
             icon: Icons.lightbulb_outline,
@@ -1714,7 +1737,7 @@ class _HomePageState extends State<HomePage> {
                 _reportData!['simple_summary'],
               ].firstWhere(
                 (v) => v != null && v.toString().trim().isNotEmpty,
-                orElse: () => 'No explanation available for this report.',
+                orElse: () => 'No explanation available.',
               ).toString(),
             ),
             canSpeak: true,
@@ -1722,7 +1745,36 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
 
-          // Translated explanation (only for non-English)
+          // ── Disease Information (English) ─────────────────────
+          if (_reportData!['disease_explanation_en'] != null &&
+              _reportData!['disease_explanation_en'].toString().trim().isNotEmpty &&
+              _selectedLanguage == 'English') ...[
+            _buildSectionCard(
+              title: 'Disease Information',
+              icon: Icons.medical_information_outlined,
+              content: _stripDecorativeSymbols(
+                  _reportData!['disease_explanation_en'].toString()),
+              canSpeak: true,
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── What Should You Do Next ───────────────────────────
+          if (_reportData!['solution_plan_en'] != null &&
+              _reportData!['solution_plan_en'].toString().trim().isNotEmpty &&
+              _selectedLanguage == 'English') ...[
+            _buildSectionCard(
+              title: 'What Should You Do Next',
+              icon: Icons.directions_walk_rounded,
+              content: _stripDecorativeSymbols(
+                  _reportData!['solution_plan_en'].toString()),
+              canSpeak: true,
+              isHighlighted: true,
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Translated Explanation ────────────────────────────
           if (_selectedLanguage != 'English') ...[
             _buildSectionCard(
               title: '$_selectedLanguage Explanation',
@@ -1736,7 +1788,7 @@ class _HomePageState extends State<HomePage> {
                         _reportData!['disease_explanation_hi'],
                       ].firstWhere(
                         (v) => v != null && v.toString().trim().isNotEmpty,
-                        orElse: () => 'Translation not available. Tap the refresh button to retranslate.',
+                        orElse: () => 'Translation not available.',
                       ).toString(),
                     ),
               canSpeak: !_isTranslating,
@@ -1750,9 +1802,116 @@ class _HomePageState extends State<HomePage> {
                   : null,
             ),
             const SizedBox(height: 12),
+            // What to do next in target language
+            if (_reportData!['solution_plan_hi'] != null &&
+                _reportData!['solution_plan_hi'].toString().trim().isNotEmpty)
+              _buildSectionCard(
+                title: 'What Should You Do Next',
+                icon: Icons.directions_walk_rounded,
+                content: _stripDecorativeSymbols(
+                    _reportData!['solution_plan_hi'].toString()),
+                canSpeak: true,
+                isHighlighted: true,
+              ),
+            const SizedBox(height: 12),
           ],
 
-          // Suggestions / AI recommendations
+          // ── Lab Values Summary ────────────────────────────────
+          if (_reportData!['parsed_data'] != null) ...[
+            Builder(builder: (context) {
+              final parsed = _reportData!['parsed_data'];
+              List<dynamic> labValues = [];
+              if (parsed is Map && parsed['lab_values'] is List) {
+                labValues = parsed['lab_values'] as List;
+              }
+              if (labValues.isEmpty) return const SizedBox.shrink();
+
+              final abnormal = labValues.where((lv) {
+                final status = (lv['status'] ?? '').toString().toLowerCase();
+                return status == 'high' || status == 'low' || status == 'critical';
+              }).toList();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Lab Values (${labValues.length} tests found)',
+                      style: const TextStyle(fontSize: 15,
+                          fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  if (abnormal.isNotEmpty) ...[
+                    ...abnormal.map((lv) {
+                      final status = (lv['status'] ?? '').toString().toLowerCase();
+                      final color = status == 'critical'
+                          ? AppColors.red
+                          : status == 'high' || status == 'low'
+                              ? AppColors.amber
+                              : AppColors.success;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8, height: 8,
+                              decoration: BoxDecoration(
+                                  color: color, shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '${lv['test_name'] ?? 'Unknown'}: '
+                                '${lv['value'] ?? ''} ${lv['unit'] ?? ''}',
+                                style: const TextStyle(fontSize: 13,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                (lv['status'] ?? '').toString().toUpperCase(),
+                                style: TextStyle(fontSize: 11,
+                                    fontWeight: FontWeight.bold, color: color),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ] else
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.successBg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.check_circle, color: AppColors.success, size: 18),
+                          SizedBox(width: 8),
+                          Text('All lab values are within normal range',
+                              style: TextStyle(fontSize: 13,
+                                  color: AppColors.success, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                ],
+              );
+            }),
+          ],
+
+          // ── Suggestions ───────────────────────────────────────
           if (_reportData!['suggestions'] != null &&
               (_reportData!['suggestions'] as List).isNotEmpty) ...[
             Builder(builder: (context) {
