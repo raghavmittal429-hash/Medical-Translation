@@ -1699,43 +1699,42 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildSectionCard(
-            title: 'Medivaanii',
-            icon: Icons.medical_information,
-            content: _stripDecorativeSymbols((_reportData!['medical_summary'] ?? 'N/A').toString()),
-            canSpeak: true,
-          ),
-          const SizedBox(height: 16),
+          // Simple patient-friendly explanation
           _buildSectionCard(
             title: 'Simple Explanation',
             icon: Icons.lightbulb_outline,
-            content: _stripDecorativeSymbols((_reportData!['simple_explanation'] ?? 'N/A').toString()),
+            content: _stripDecorativeSymbols(
+                (_reportData!['simple_explanation'] ?? 'Not available').toString()),
             canSpeak: true,
             isHighlighted: true,
           ),
-          const SizedBox(height: 16),
-          _buildSectionCard(
-            title: '$_selectedLanguage Explanation',
-            icon: Icons.translate,
-            content: _isTranslating
-                ? 'Translating to $_selectedLanguage...'
-                : (_reportData!['translated_explanation']
-                                ?.toString()
-                                .isNotEmpty ==
-                            true
-                        ? _reportData!['translated_explanation']
-                        : 'Translation not available. Tap the language button above to retranslate.'),
-            canSpeak: !_isTranslating,
-            extraAction: _reportData != null && !_isTranslating
-                ? IconButton(
-                    icon: const Icon(Icons.refresh, size: 20),
-                    tooltip: 'Retranslate',
-                    color: AppColors.navy800,
-                    onPressed: () => _retranslate(_selectedLanguage),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+
+          // Translated explanation (only for non-English)
+          if (_selectedLanguage != 'English') ...[
+            _buildSectionCard(
+              title: '$_selectedLanguage Explanation',
+              icon: Icons.translate,
+              content: _isTranslating
+                  ? 'Translating to $_selectedLanguage...'
+                  : _stripDecorativeSymbols(
+                      (_reportData!['translated_explanation']?.toString().isNotEmpty == true
+                          ? _reportData!['translated_explanation'].toString()
+                          : 'Translation not available.')),
+              canSpeak: !_isTranslating,
+              extraAction: !_isTranslating
+                  ? IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      tooltip: 'Retranslate',
+                      color: AppColors.navy800,
+                      onPressed: () => _retranslate(_selectedLanguage),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Suggestions / AI recommendations
           if (_reportData!['suggestions'] != null &&
               (_reportData!['suggestions'] as List).isNotEmpty) ...[
             Builder(builder: (context) {
@@ -1750,25 +1749,25 @@ class _HomePageState extends State<HomePage> {
                       .map((s) => s.toString())
                       .toList();
               final title =
-                  showTranslated ? '$_selectedLanguage Suggestions' : 'AI Suggestions';
+                  showTranslated ? '$_selectedLanguage Suggestions' : 'Suggestions';
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(title,
                       style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
+                          fontSize: 16, fontWeight: FontWeight.bold,
+                          color: Color(0xFF0A2472))),
                   const SizedBox(height: 8),
                   if (_isTranslating)
                     Card(
-                      color: Colors.orange.shade50,
+                      color: AppColors.navy50,
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Row(
                           children: [
                             const SizedBox(
-                                width: 18,
-                                height: 18,
+                                width: 18, height: 18,
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: AppColors.navy800)),
                             const SizedBox(width: 12),
@@ -1780,7 +1779,7 @@ class _HomePageState extends State<HomePage> {
                     )
                   else
                     Card(
-                      color: Colors.orange.shade50,
+                      color: AppColors.navy50,
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Column(
@@ -1788,15 +1787,16 @@ class _HomePageState extends State<HomePage> {
                           children: [
                             ...displayList.map(
                               (s) => Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(vertical: 4),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Icons.arrow_right,
-                                        color: Colors.orange),
+                                    Icon(Icons.check_circle_outline,
+                                        color: AppColors.navy800, size: 18),
                                     const SizedBox(width: 8),
-                                    Expanded(child: Text(_stripDecorativeSymbols(s))),
+                                    Expanded(child: Text(
+                                        _stripDecorativeSymbols(s),
+                                        style: const TextStyle(fontSize: 14, height: 1.4))),
                                   ],
                                 ),
                               ),
@@ -1813,7 +1813,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
   Widget _buildSuggestionsTab() {
     if (_reportData == null) {
       return _buildEmptyState(
