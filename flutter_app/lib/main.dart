@@ -1152,7 +1152,7 @@ class _HomePageState extends State<HomePage> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Padding(
@@ -1330,7 +1330,7 @@ class _HomePageState extends State<HomePage> {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Padding(
@@ -2134,10 +2134,11 @@ class _HomePageState extends State<HomePage> {
                   Container(
                     width: 80, height: 80,
                     decoration: BoxDecoration(
-                      color: AppColors.green800,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.border),
                     ),
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(8),
                     child: Image.asset('assets/images/arogya_pandit_logo.png',
                         fit: BoxFit.contain),
                   ),
