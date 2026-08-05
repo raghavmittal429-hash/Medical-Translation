@@ -1505,16 +1505,20 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 12),
             Row(children: [
               Expanded(
-                  child: OutlinedButton.icon(
+                  child: ElevatedButton.icon(
                 onPressed: _isDownloadingPdf ? null : _downloadPdf,
                 icon: _isDownloadingPdf
                     ? const SizedBox(
                         width: 14,
                         height: 14,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppColors.navy800))
+                            strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.download_rounded, size: 18),
                 label: Text(_isDownloadingPdf ? 'Generating…' : 'Download PDF'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.navy800,
+                  foregroundColor: Colors.white,
+                ),
               )),
               const SizedBox(width: 10),
               Expanded(
