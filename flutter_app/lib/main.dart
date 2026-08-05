@@ -27,7 +27,7 @@ class MedicalCDSSApp extends StatelessWidget {
       theme: ThemeData(
   useMaterial3: true,
   colorScheme: ColorScheme.fromSeed(
-    seedColor: const AppColors.navy800,
+    seedColor: AppColors.navy800,
     brightness: Brightness.light,
   ),
 
@@ -59,7 +59,7 @@ class MedicalCDSSApp extends StatelessWidget {
 
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
-      backgroundColor: const AppColors.navy800,
+      backgroundColor: AppColors.navy800,
       foregroundColor: Colors.white,
       elevation: 0,
       minimumSize: const Size(double.infinity, 56),
@@ -952,7 +952,7 @@ class _HomePageState extends State<HomePage> {
                                 style: TextStyle(
                                   fontSize: 18,
                                   color: isSelected
-                                      ? const AppColors.navy800
+                                      ? AppColors.navy800
                                       : Colors.grey.shade600,
                                   fontWeight: FontWeight.bold,
                                 )),
@@ -963,7 +963,7 @@ class _HomePageState extends State<HomePage> {
                                     ? FontWeight.w700
                                     : FontWeight.w500,
                                 color:
-                                    isSelected ? const AppColors.navy800 : null,
+                                    isSelected ? AppColors.navy800 : null,
                               )),
                           subtitle: Text(lang['native']!,
                               style: const TextStyle(fontSize: 12)),
@@ -1270,7 +1270,7 @@ class _HomePageState extends State<HomePage> {
         selectedIndex: _selectedIndex,
         height: 72,
         backgroundColor: Colors.white,
-        indicatorColor: const AppColors.navy50,
+        indicatorColor: AppColors.navy50,
         onDestinationSelected: (index) {
           setState(() {
             _currentIndex = index;
@@ -1472,7 +1472,7 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: const AppColors.navy800, size: 16),
+          Icon(icon, color: AppColors.navy800, size: 16),
           const SizedBox(width: 6),
           Text(label,
               style: const TextStyle(
@@ -1488,7 +1488,7 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const AppColors.navy50,
+        color: AppColors.navy50,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFCCFBF1), width: 1),
       ),
@@ -1557,7 +1557,7 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const AppColors.navy800),
+          Icon(icon, size: 14, color: AppColors.navy800),
           const SizedBox(width: 5),
           Text(label, style: const TextStyle(fontSize: 12)),
         ],
@@ -1592,7 +1592,7 @@ class _HomePageState extends State<HomePage> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: const AppColors.navy50,
+                          color: AppColors.navy50,
                           shape: BoxShape.circle,
                           border: Border.all(
                               color: const Color(0xFFCCFBF1), width: 1.5),
@@ -1657,7 +1657,7 @@ class _HomePageState extends State<HomePage> {
                 ? IconButton(
                     icon: const Icon(Icons.refresh, size: 20),
                     tooltip: 'Retranslate',
-                    color: const AppColors.navy800,
+                    color: AppColors.navy800,
                     onPressed: () => _retranslate(_selectedLanguage),
                   )
                 : null,
@@ -1821,7 +1821,7 @@ class _HomePageState extends State<HomePage> {
                   ? IconButton(
                       icon: const Icon(Icons.refresh, size: 20),
                       tooltip: 'Retranslate',
-                      color: const AppColors.navy800,
+                      color: AppColors.navy800,
                       onPressed: () => _retranslate(_selectedLanguage),
                     )
                   : null,
@@ -1842,7 +1842,7 @@ class _HomePageState extends State<HomePage> {
                   ? IconButton(
                       icon: const Icon(Icons.refresh, size: 20),
                       tooltip: 'Retranslate',
-                      color: const AppColors.navy800,
+                      color: AppColors.navy800,
                       onPressed: () => _retranslate(_selectedLanguage),
                     )
                   : null,
@@ -1876,7 +1876,7 @@ class _HomePageState extends State<HomePage> {
                   (entry) => _buildSuggestionTile(
                     index: entry.key + 1,
                     text: entry.value,
-                    color: const AppColors.navy800,
+                    color: AppColors.navy800,
                   ),
                 ),
           ],
@@ -1971,7 +1971,7 @@ class _HomePageState extends State<HomePage> {
                           shape: BoxShape.circle,
                         ),
                         child: Icon(icon,
-                            size: 56, color: const AppColors.navy800),
+                            size: 56, color: AppColors.navy800),
                       ),
                       const SizedBox(height: 18),
                       Text(title,
@@ -2161,7 +2161,7 @@ class _HomePageState extends State<HomePage> {
                     await _tts.stop();
                   }
                 },
-                activeThumbColor: const AppColors.navy800,
+                activeThumbColor: AppColors.navy800,
               ),
             ),
           ),
