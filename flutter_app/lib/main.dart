@@ -1704,28 +1704,6 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
 
-          // ── Report Info ──────────────────────────────────────
-          if (_reportData!['report_date'] != null &&
-              _reportData!['report_date'].toString().isNotEmpty)
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.navy50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.navy200),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today, size: 16, color: AppColors.navy800),
-                  const SizedBox(width: 8),
-                  Text('Report Date: ${_reportData!['report_date']}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
-                          color: AppColors.textPrimary)),
-                ],
-              ),
-            ),
-
           // ── Simple Explanation ───────────────────────────────
           _buildSectionCard(
             title: 'Simple Explanation',
