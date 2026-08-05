@@ -1325,48 +1325,26 @@ class _HomePageState extends State<HomePage> {
                     offset: const Offset(0, 8))
               ],
             ),
-            child: Row(children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Image.asset(
-                    'assets/images/arogya_pandit_logo.png',
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                  child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Medivaanii',
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: -0.4)),
-                  SizedBox(height: 4),
-                  Text('Medical Report Assistant',
-                      style: TextStyle(fontSize: 12, color: Colors.white70)),
-                  SizedBox(height: 6),
-                  Text(
-                    'We provide your report in simple language which is easy to understand.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text('Medical Report Assistant',
                     style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white60,
-                      height: 1.4,
-                    ),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: -0.3)),
+                SizedBox(height: 8),
+                Text(
+                  'We provide your report in simple language which is easy to understand.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white70,
+                    height: 1.45,
                   ),
-                ],
-              )),
-            ]),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           GestureDetector(
