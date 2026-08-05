@@ -1998,9 +1998,12 @@ class _HomePageState extends State<HomePage> {
     bool isHighlighted = false,
     Widget? extraAction,
   }) {
-    final paragraphs = content.trim().isEmpty
+    // Strip decorative symbols (=====, ------, **bold**, emoji etc.)
+    // before displaying so they don't appear in the card text.
+    final cleaned = _stripDecorativeSymbols(content);
+    final paragraphs = cleaned.trim().isEmpty
         ? <String>[]
-        : content
+        : cleaned
             .split(RegExp(r'\n\s*\n+'))
             .map((p) => p.trim())
             .where((p) => p.isNotEmpty)
