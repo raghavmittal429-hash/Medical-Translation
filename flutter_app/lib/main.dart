@@ -1363,9 +1363,9 @@ class _HomePageState extends State<HomePage> {
         },
         destinations: const [
           NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: "Home"),
+              icon: Icon(Icons.upload_file_outlined),
+              selectedIcon: Icon(Icons.upload_file),
+              label: "Upload"),
           NavigationDestination(
               icon: Icon(Icons.description_outlined),
               selectedIcon: Icon(Icons.description),
