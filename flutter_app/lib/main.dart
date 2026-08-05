@@ -1369,7 +1369,7 @@ class _HomePageState extends State<HomePage> {
           NavigationDestination(
               icon: Icon(Icons.description_outlined),
               selectedIcon: Icon(Icons.description),
-              label: "Explain"),
+              label: "Explanation"),
           NavigationDestination(
               icon: Icon(Icons.lightbulb_outline),
               selectedIcon: Icon(Icons.lightbulb),
@@ -1699,12 +1699,20 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Simple patient-friendly explanation
+          // Simple patient-friendly explanation from the report
           _buildSectionCard(
             title: 'Simple Explanation',
             icon: Icons.lightbulb_outline,
             content: _stripDecorativeSymbols(
-                (_reportData!['simple_explanation'] ?? 'Not available').toString()),
+              [
+                _reportData!['simple_explanation'],
+                _reportData!['simplified_explanation'],
+                _reportData!['simple_summary'],
+              ].firstWhere(
+                (v) => v != null && v.toString().trim().isNotEmpty,
+                orElse: () => 'No explanation available for this report.',
+              ).toString(),
+            ),
             canSpeak: true,
             isHighlighted: true,
           ),
@@ -1718,9 +1726,15 @@ class _HomePageState extends State<HomePage> {
               content: _isTranslating
                   ? 'Translating to $_selectedLanguage...'
                   : _stripDecorativeSymbols(
-                      (_reportData!['translated_explanation']?.toString().isNotEmpty == true
-                          ? _reportData!['translated_explanation'].toString()
-                          : 'Translation not available.')),
+                      [
+                        _reportData!['translated_explanation'],
+                        _reportData!['disease_explanation_lang'],
+                        _reportData!['disease_explanation_hi'],
+                      ].firstWhere(
+                        (v) => v != null && v.toString().trim().isNotEmpty,
+                        orElse: () => 'Translation not available. Tap the refresh button to retranslate.',
+                      ).toString(),
+                    ),
               canSpeak: !_isTranslating,
               extraAction: !_isTranslating
                   ? IconButton(
