@@ -1355,6 +1355,15 @@ class _HomePageState extends State<HomePage> {
                   SizedBox(height: 4),
                   Text('AI Medical Report Assistant',
                       style: TextStyle(fontSize: 12, color: Colors.white70)),
+                  SizedBox(height: 6),
+                  Text(
+                    'We provide your report in simple language which is easy to understand.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white60,
+                      height: 1.4,
+                    ),
+                  ),
                 ],
               )),
             ]),
