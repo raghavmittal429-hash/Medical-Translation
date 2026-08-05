@@ -462,6 +462,9 @@ class _HomePageState extends State<HomePage> {
   // a newer card was tapped and the old audio stops immediately.
   int _speakGeneration = 0;
   html.AudioElement? _currentAudio;
+  String? _activeSpeechContent; // tracks which card is speaking
+  bool _isSpeaking = false;
+  bool _isPaused  = false;
 
   Future<void> _speak(String rawText) async {
     if (rawText.isEmpty || !_ttsEnabled) return;
@@ -477,7 +480,44 @@ class _HomePageState extends State<HomePage> {
     _currentAudio = null;
     await _tts.stop();
 
+    setState(() {
+      _activeSpeechContent = rawText;
+      _isSpeaking = true;
+      _isPaused = false;
+    });
+
     await _speakViaBackend(text, _selectedLanguage, gen);
+
+    // Cleanup when done naturally
+    if (_speakGeneration == gen && mounted) {
+      setState(() {
+        _activeSpeechContent = null;
+        _isSpeaking = false;
+        _isPaused = false;
+      });
+    }
+  }
+
+  void _stopSpeaking() {
+    _speakGeneration++; // cancels in-flight loop
+    _currentAudio?.pause();
+    _currentAudio = null;
+    _tts.stop();
+    if (mounted) setState(() {
+      _activeSpeechContent = null;
+      _isSpeaking = false;
+      _isPaused = false;
+    });
+  }
+
+  void _pauseSpeaking() {
+    _currentAudio?.pause();
+    if (mounted) setState(() { _isSpeaking = false; _isPaused = true; });
+  }
+
+  void _resumeSpeaking() {
+    _currentAudio?.play();
+    if (mounted) setState(() { _isSpeaking = true; _isPaused = false; });
   }
 
   Future<void> _speakViaBackend(String text, String language, int gen) async {
@@ -2267,22 +2307,68 @@ class _HomePageState extends State<HomePage> {
                           color: AppColors.textPrimary))),
               if (extraAction != null) extraAction,
               if (canSpeak)
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => _speak(content),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: AppColors.navy50,
-                        borderRadius: BorderRadius.circular(8),
+                StatefulBuilder(builder: (context, _) {
+                  final isActive = _activeSpeechContent == content;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Play / Pause toggle
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            if (isActive && _isSpeaking) {
+                              _pauseSpeaking();
+                            } else if (isActive && _isPaused) {
+                              _resumeSpeaking();
+                            } else {
+                              _speak(content);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: isActive
+                                  ? AppColors.navy800
+                                  : AppColors.navy50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              isActive && _isSpeaking
+                                  ? Icons.pause_rounded
+                                  : isActive && _isPaused
+                                      ? Icons.play_arrow_rounded
+                                      : Icons.volume_up_rounded,
+                              color: isActive ? Colors.white : AppColors.navy800,
+                              size: 18,
+                            ),
+                          ),
+                        ),
                       ),
-                      child: const Icon(Icons.volume_up_rounded,
-                          color: AppColors.navy800, size: 18),
-                    ),
-                  ),
-                ),
+                      // Stop button — only when active
+                      if (isActive && (_isSpeaking || _isPaused)) ...[
+                        const SizedBox(width: 4),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: _stopSpeaking,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: AppColors.redBg,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.stop_rounded,
+                                  color: AppColors.red, size: 18),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                }),
             ]),
             const SizedBox(height: 4),
             const Divider(height: 16),
