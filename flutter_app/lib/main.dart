@@ -1745,34 +1745,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
 
-          // ── Disease Information (English) ─────────────────────
-          if (_reportData!['disease_explanation_en'] != null &&
-              _reportData!['disease_explanation_en'].toString().trim().isNotEmpty &&
-              _selectedLanguage == 'English') ...[
-            _buildSectionCard(
-              title: 'Disease Information',
-              icon: Icons.medical_information_outlined,
-              content: _stripDecorativeSymbols(
-                  _reportData!['disease_explanation_en'].toString()),
-              canSpeak: true,
-            ),
-            const SizedBox(height: 12),
-          ],
 
-          // ── What Should You Do Next ───────────────────────────
-          if (_reportData!['solution_plan_en'] != null &&
-              _reportData!['solution_plan_en'].toString().trim().isNotEmpty &&
-              _selectedLanguage == 'English') ...[
-            _buildSectionCard(
-              title: 'What Should You Do Next',
-              icon: Icons.directions_walk_rounded,
-              content: _stripDecorativeSymbols(
-                  _reportData!['solution_plan_en'].toString()),
-              canSpeak: true,
-              isHighlighted: true,
-            ),
-            const SizedBox(height: 12),
-          ],
 
           // ── Translated Explanation ────────────────────────────
           if (_selectedLanguage != 'English') ...[
@@ -1802,18 +1775,7 @@ class _HomePageState extends State<HomePage> {
                   : null,
             ),
             const SizedBox(height: 12),
-            // What to do next in target language
-            if (_reportData!['solution_plan_hi'] != null &&
-                _reportData!['solution_plan_hi'].toString().trim().isNotEmpty)
-              _buildSectionCard(
-                title: 'What Should You Do Next',
-                icon: Icons.directions_walk_rounded,
-                content: _stripDecorativeSymbols(
-                    _reportData!['solution_plan_hi'].toString()),
-                canSpeak: true,
-                isHighlighted: true,
-              ),
-            const SizedBox(height: 12),
+
           ],
 
           // ── Lab Values Summary ────────────────────────────────
