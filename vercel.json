@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "chmod +x vercel-build.sh && ./vercel-build.sh",
+  "buildCommand": "git clone https://github.com/flutter/flutter.git -b stable --depth 1 ~/flutter && export PATH=$PATH:~/flutter/bin && cd flutter_app && flutter pub get && flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL",
   "outputDirectory": "flutter_app/build/web",
   "installCommand": "echo skip",
   "framework": null,
