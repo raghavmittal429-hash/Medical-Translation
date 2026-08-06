@@ -2285,20 +2285,6 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: isHighlighted ? AppColors.gold100 : AppColors.navy50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon,
-                    color: isHighlighted
-                        ? AppColors.gold600
-                        : AppColors.navy800,
-                    size: 18),
-              ),
-              const SizedBox(width: 10),
               Expanded(
                   child: Text(title,
                       style: const TextStyle(
